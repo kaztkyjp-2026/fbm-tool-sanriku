@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FBM出荷自動化ツール - Amazon FBM × ヤマトB2クラウド</title>
+  <link rel="icon" type="image/png" href="./assets/icon.png">
+  <meta name="description" content="Amazon FBM（自己発送）の未出荷注文レポートをヤマトB2クラウド取込CSV・Amazon出荷通知TXTに変換する無料ブラウザツール。入力データは外部に送信されません。">
+  <script src="https://cdn.jsdelivr.net/npm/encoding-japanese@2/encoding.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Meiryo", sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    .container {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 700px;
+      overflow: hidden;
+    }
+
+    .app-header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 24px 36px 20px;
+    }
+    .app-logo { font-size: 11px; color: #888; letter-spacing: 0.08em; margin-bottom: 4px; }
+    .app-title { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+    .security-badge {
+      display: inline-block;
+      font-size: 11px;
+      color: #6ee7b7;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(110,231,183,0.3);
+      border-radius: 20px;
+      padding: 3px 10px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      background: #f5f5f7;
+      padding: 16px 20px;
+      gap: 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      padding: 10px 12px;
+      cursor: pointer;
+      border-radius: 10px;
+      transition: all 0.2s;
+      user-select: none;
+      background: transparent;
+    }
+    .tab:hover { background: #ebebed; }
+    .tab.active { background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,0.10); }
+    .tab-num {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #ddd;
+      color: #999;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .tab.active .tab-num { background: #e77a1a; color: #fff; }
+    .tab-label { display: flex; flex-direction: column; }
+    .tab-step { font-size: 10px; color: #aaa; font-weight: 400; }
+    .tab.active .tab-step { color: #e77a1a; }
+    .tab-name { font-size: 12px; font-weight: 700; color: #888; line-height: 1.3; }
+    .tab.active .tab-name { color: #1a1a2e; }
+    .tab-arrow {
+      color: #ccc;
+      font-size: 14px;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+
+    .tab-content { display: none; padding: 32px 36px; }
+    .tab-content.active { display: block; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #999;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .settings-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      background: #fafafa;
+      transition: border-color 0.2s;
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: #e77a1a;
+      background: #fff;
+    }
+
+    .store-sections { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
+
+    .store-section {
+      border: 1px solid #e8e8e8;
+      border-radius: 10px;
+      padding: 14px;
+      background: #fafafa;
+    }
+    .store-section-header {
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 10px;
+    }
+
+    .dropzone {
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      padding: 18px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .dropzone:hover, .dropzone.drag-over { border-color: #e77a1a; background: #fff9f5; }
+    .dropzone.has-file { border-color: #22a55d; background: #f5fff9; }
+    .dropzone.drop-blue:hover, .dropzone.drop-blue.drag-over { border-color: #2563eb; background: #eff6ff; }
+    .dropzone-icon { font-size: 22px; margin-bottom: 5px; }
+    .dropzone-text { font-size: 13px; color: #555; line-height: 1.5; }
+    .dropzone-hint { font-size: 11px; color: #aaa; margin-top: 3px; }
+    .dropzone.has-file .dropzone-text { color: #22a55d; font-weight: 600; }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-bottom: 18px;
+    }
+    .btn-orange { background: #e77a1a; color: #fff; }
+    .btn-orange:hover:not(:disabled) { background: #d06812; }
+    .btn-blue { background: #2563eb; color: #fff; }
+    .btn-blue:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-green { background: #22a55d; color: #fff; }
+    .btn-green:hover:not(:disabled) { background: #1a8a4b; }
+    .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+
+    .results { display: flex; flex-direction: column; gap: 8px; }
+    .result-item { display: none; border-radius: 8px; padding: 12px 16px; font-size: 13px; }
+    .result-item.success { display: block; background: #f0fdf4; border: 1px solid #86efac; color: #166534; font-weight: 600; }
+    .result-item.error   { display: block; background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+
+    .warning {
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 12px;
+      color: #92400e;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .divider { border: none; border-top: 1px solid #eee; margin: 24px 0 18px; }
+
+    .info-box {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 13px;
+      font-size: 12px;
+      color: #666;
+      line-height: 1.8;
+      margin-bottom: 10px;
+    }
+
+    /* === Settings tab === */
+    .settings-intro {
+      font-size: 13px;
+      color: #555;
+      line-height: 1.7;
+      margin-bottom: 24px;
+      background: #f0f6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .store-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+      background: #fafafa;
+    }
+    .store-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .store-card-title { font-size: 13px; font-weight: 700; color: #333; }
+    .btn-delete-store {
+      border: 1px solid #fca5a5;
+      background: #fff;
+      color: #dc2626;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+    .btn-delete-store:hover { background: #fef2f2; }
+
+    .store-card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .store-card-grid .field.full { grid-column: span 2; }
+
+    .btn-add-store {
+      width: 100%;
+      padding: 11px;
+      border: 2px dashed #ccc;
+      border-radius: 10px;
+      background: #fff;
+      color: #888;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 18px;
+    }
+    .btn-add-store:hover { border-color: #e77a1a; color: #e77a1a; background: #fff9f5; }
+
+    /* === Footer === */
+    .footer {
+      border-top: 1px solid #eee;
+      padding: 14px 36px 18px;
+      background: #fafafa;
+    }
+    .contact-links { font-size: 12px; color: #888; margin-bottom: 10px; }
+    .contact-links a { color: #2563eb; text-decoration: none; }
+    .contact-links a:hover { text-decoration: underline; }
+    .footer details summary {
+      font-size: 11px; color: #bbb; cursor: pointer; user-select: none;
+    }
+    .footer details[open] summary { margin-bottom: 10px; color: #999; }
+    .disclaimer-text { font-size: 11px; color: #aaa; line-height: 1.8; }
+    .disclaimer-text p { margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="app-header">
+    <div class="app-logo">Amazon FBM 出荷自動化 ／ 無料ツール</div>
+    <div class="app-title">FBM出荷自動化ツール</div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;">
+      <div class="security-badge">🔒 データはブラウザ内のみで処理。外部サーバーへの送信はありません。</div>
+      <a href="./manual.html" target="_blank" style="font-size:13px;font-weight:700;color:#fff;background:#e77a1a;border-radius:8px;padding:5px 14px;text-decoration:none;letter-spacing:0.03em;">📖 使い方マニュアル</a>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab" data-tab="settings">
+      <div class="tab-num">1</div>
+      <div class="tab-label">
+        <span class="tab-step">はじめに</span>
+        <span class="tab-name">依頼主設定</span>
+      </div>
+    </div>
+    <div class="tab-arrow">▶</div>
+    <div class="tab" data-tab="step1">
+      <div class="tab-num">2</div>
+      <div class="tab-label">
+        <span class="tab-step">STEP 1</span>
+        <span class="tab-name">B2クラウド用CSV</span>
+      </div>
+    </div>
+    <div class="tab-arrow">▶</div>
+    <div class="tab" data-tab="step2">
+      <div class="tab-num">3</div>
+      <div class="tab-label">
+        <span class="tab-step">STEP 2</span>
+        <span class="tab-name">Amazon出荷通知TXT</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 設定 ============ -->
+  <div class="tab-content" id="tab-settings">
+    <div class="settings-intro">
+      ヤマトB2クラウドに登録している<strong>依頼主（発送元）情報</strong>を入力してください。<br>
+      設定はこのブラウザに保存されます。複数店舗の追加・削除が可能です。
+    </div>
+    <div class="section-label">店舗情報</div>
+    <div id="settings-cards"></div>
+    <button class="btn-add-store" id="add-store-btn">＋ 店舗を追加</button>
+    <button class="btn-primary btn-green" id="save-settings-btn">保存してSTEP 1へ</button>
+    <div id="settings-result"></div>
+  </div>
+
+  <!-- ============ STEP1 ============ -->
+  <div class="tab-content" id="tab-step1">
+    <p style="font-size:13px;color:#666;margin-bottom:20px;line-height:1.6;">
+      Amazonセラーセントラルからダウンロードした未出荷注文レポートを<br>
+      ヤマトB2クラウド取込用CSVに変換します。
+    </p>
+    <div class="settings-row">
+      <div class="field">
+        <label>出荷予定日</label>
+        <input type="date" id="s1-shipDate">
+      </div>
+      <div class="field">
+        <label>送り状種類</label>
+        <select id="s1-invoiceType">
+          <option value="A" selected>ネコポス</option>
+          <option value="0">宅急便</option>
+          <option value="2">宅急便コンパクト</option>
+        </select>
+      </div>
+    </div>
+    <div class="section-label">店舗・未出荷レポート</div>
+    <div class="store-sections" id="s1-storeSections"></div>
+    <button class="btn-primary btn-orange" id="s1-convertBtn" disabled>変換して保存</button>
+    <div class="results" id="s1-results"></div>
+    <hr class="divider">
+    <div class="section-label">出力先</div>
+    <div class="info-box">
+      フォルダ名: <strong>B2クラウド_YYYYMMDD</strong><br>
+      ファイル名: <strong>b2cloud_YYYYMMDD.csv</strong>（全店舗統合・1ファイル）
+    </div>
+    <div class="section-label" style="margin-top:14px;">依頼主情報（設定中）</div>
+    <div id="s1-storeInfoList"></div>
+  </div>
+
+  <!-- ============ STEP2 ============ -->
+  <div class="tab-content" id="tab-step2">
+    <p style="font-size:13px;color:#666;margin-bottom:16px;line-height:1.6;">
+      ヤマトB2クラウドの「発行済みデータ」CSVを読み込み、<br>
+      Amazonセラーセントラルへの出荷通知ファイル（.txt）を生成します。
+    </p>
+    <div class="warning">
+      ⚠️ <strong>取り違え注意</strong>：B2クラウドへの「取込用CSV」ではなく、ラベル発行後にエクスポートする
+      <strong>「発行済みデータ」CSV</strong>（<code>yyyymmddHHMMSS_発行済テ_ータ.csv</code>）を使用してください。<br>
+      店舗はファイル内の依頼主名から<strong>自動識別</strong>します。<br>
+      ⚠️ エクスポート時に<strong>「1行目に見出しを出力する」にチェックが必須</strong>です。チェックなしでは動作しません。
+    </div>
+    <div class="section-label">発行済みデータCSV（複数ファイル対応）</div>
+    <div class="dropzone drop-blue" id="s2-dropzone" style="margin-bottom:20px;">
+      <div class="dropzone-icon">📄</div>
+      <div class="dropzone-text" id="s2-dropzone-text">発行済みデータCSVをドロップ<br>またはクリックして選択</div>
+      <div class="dropzone-hint">複数ファイル同時選択可 ／ yyyymmddHHMMSS_発行済テ_ータ.csv</div>
+    </div>
+    <input type="file" id="s2-fileInput" accept=".csv,.txt" multiple style="display:none">
+    <button class="btn-primary btn-blue" id="s2-convertBtn" disabled>変換して保存</button>
+    <div class="results" id="s2-results"></div>
+    <hr class="divider">
+    <div class="section-label">出力先</div>
+    <div class="info-box">
+      フォルダ名: <strong>FBM出荷通知_YYYYMMDD</strong><br>
+      ファイル名: <strong>{店舗名}_amazon_shipment_confirm_YYYYMMDD.txt</strong><br>
+      同日2本目以降: <strong>…_2.txt、…_3.txt</strong>（自動採番）
+    </div>
+    <div class="section-label" style="margin-top:14px;">ご注意</div>
+    <div class="info-box">
+      アップロード後の処理レポートで <strong>90061警告</strong>（出荷元住所系）が出ますが、
+      出荷通知は正常に処理されます。実害なし・想定内の警告です。
+    </div>
+  </div>
+
+  <!-- ============ Footer ============ -->
+  <div class="footer">
+    <div class="contact-links">
+      要望・不具合報告：
+      <a href="https://github.com/ec-tools-jp/fbm-tool/issues" target="_blank">GitHub Issues（公開掲示板）</a>
+      ｜
+      <a href="https://docs.google.com/forms/d/e/1FAIpQLSdeymUyCmegcPe6v2r4eOmVLpl-8I2j2rjXoO_uYbWxo1DYMQ/viewform" target="_blank">お問い合わせフォーム</a>
+    </div>
+    <div style="font-size:11px;color:#bbb;margin-bottom:10px;">© 2026 ec-tools-jp / <a href="https://github.com/ec-tools-jp/fbm-tool/blob/main/LICENSE" target="_blank" style="color:#bbb;">MIT License</a></div>
+    <details>
+      <summary>免責事項</summary>
+      <div class="disclaimer-text">
+        <p>本ツールは無償で提供されるソフトウェアです。利用者は以下の事項に同意の上、自己の責任においてご使用ください。</p>
+        <p><strong>無保証</strong>：本ツールは現状有姿（as-is）で提供されます。変換結果の正確性・完全性・特定目的への適合性について、いかなる保証も行いません。</p>
+        <p><strong>免責</strong>：本ツールの使用または使用不能によって生じた損害（データの損失、業務上の損失、その他直接・間接を問わず）について、作成者は一切の責任を負いません。</p>
+        <p><strong>利用規約への準拠</strong>：Amazon・ヤマトビジネスメンバーズその他各サービスの利用規約への適合は利用者自身が確認・判断してください。本ツールの利用が各サービスの規約に適合するかについて、作成者は保証しません。</p>
+        <p><strong>データの取り扱い</strong>：本ツールはすべての処理をブラウザ内で完結します。入力されたデータが外部サーバーに送信されることはありませんが、利用者自身の環境・端末上でのデータ管理は利用者の責任において行ってください。</p>
+        <p><strong>変更・廃止</strong>：本ツールの内容・仕様・公開の継続については予告なく変更・終了することがあります。</p>
+      </div>
+    </details>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// localStorage
+// ============================================================
+function loadStores() {
+  try {
+    const data = localStorage.getItem('fbm_tool_stores');
+    return data ? JSON.parse(data) : [];
+  } catch { return []; }
+}
+function saveStores(stores) {
+  localStorage.setItem('fbm_tool_stores', JSON.stringify(stores));
+}
+
+// ============================================================
+// Constants
+// ============================================================
+const SHIP_METHOD_MAP = { 'A': 'ネコポス', '0': '宅急便', '2': '宅急便コンパクト' };
+
+const B2_HEADER = [
+  'お客様管理番号','送り状種類','クール区分','伝票番号','出荷予定日','お届け予定日',
+  '配達時間帯','お届け先コード','お届け先電話番号','お届け先電話番号枝番','お届け先郵便番号',
+  'お届け先住所','お届け先アパートマンション名','お届け先会社・部門１','お届け先会社・部門名２',
+  'お届け先名','お届け先名(ｶﾅ)','敬称','ご依頼主コード','ご依頼主電話番号','ご依頼主電話番号枝番',
+  'ご依頼主郵便番号','ご依頼主住所','ご依頼主アパートマンション','ご依頼主名','ご依頼主名(ｶﾅ)',
+  '品名コード１','品名１','品名コード２','品名２','荷扱い１','荷扱い２','記事',
+  'ｺﾚｸﾄ代金引換額（税込)','内消費税税額等','止置き','営業所コード','発行枚数','個数口表示フラグ',
+  '請求先顧客コード','請求先分類コード','運賃管理番号','クロネコwebコレクトデータ登録',
+  'クロネコwebコレクト加盟店番号','クロネコwebコレクト申込受付番号１',
+  'クロネコwebコレクト申込受付番号２','クロネコwebコレクト申込受付番号３',
+  'お届け予定ｅメール利用区分','お届け予定ｅメールe-mailアドレス','入力機種',
+  'お届け予定ｅメールメッセージ','お届け完了ｅメール利用区分','お届け完了ｅメールe-mailアドレス',
+  'お届け完了ｅメールメッセージ','クロネコ収納代行利用区分','予備','収納代行請求金額(税込)',
+  '収納代行内消費税額等','収納代行請求先郵便番号','収納代行請求先住所',
+  '収納代行請求先住所（アパートマンション名）','収納代行請求先会社・部門名１',
+  '収納代行請求先会社・部門名２','収納代行請求先名(漢字)','収納代行先名(カナ)',
+  '収納代行問合せ先名(漢字)','収納代行問合せ先郵便番号','収納代行問合せ先住所',
+  '収納代行問合せ先住所（アパートマンション名）','収納代行問合せ先電話番号',
+  '収納代行管理番号','収納代行品名','収納代行備考','複数口くくりキー',
+  '検索キータイトル1','検索キー1','検索キータイトル2','検索キー2','検索キータイトル3','検索キー3',
+  '検索キータイトル4','検索キー4','検索キータイトル5','検索キー5','予備','予備',
+  '投函予定メール利用区分','投函予定メールe-mailアドレス','投函予定メールメッセージ',
+  '投函完了メール（お届け先宛）利用区分','投函完了メール（お届け先宛）e-mailアドレス',
+  '投函完了メール（お届け先宛）メールメッセージ','投函完了メール（ご依頼主宛）利用区分',
+  '投函完了メール（ご依頼主宛）e-mailアドレス','投函完了メール（ご依頼主宛）メールメッセージ'
+];
+
+const NOTIFY_HEADER = [
+  ['TemplateType=OrderFulfillment','Version=2011.1102',
+   'この行はAmazonが使用しますので変更や削除しないでください.',...Array(16).fill('')],
+  ['注文番号','注文商品番号','出荷数','出荷日','配送業者コード','配送業者名',
+   'お問い合わせ伝票番号','配送方法','代金引換','透明性コード','出荷元氏名',
+   '出荷元住所1','出荷元住所2','出荷元住所3','出荷元市区町村','出荷元都道府県',
+   '出荷元国','出荷元郵便番号','出荷元電話番号'],
+  ['order-id','order-item-id','quantity','ship-date','carrier-code','carrier-name',
+   'tracking-number','ship-method','cod-collection-method','transparency_code',
+   'ship_from_address_name','ship_from_address_field1','ship_from_address_field2',
+   'ship_from_address_field3','ship_from_address_city','ship_from_address_state',
+   'ship_from_address_country','ship_from_address_postal-code','ship_from_address_phone'],
+];
+
+// ============================================================
+// Encoding utilities
+// ============================================================
+function decodeBuffer(buffer) {
+  const uint8 = new Uint8Array(buffer);
+  const detected = Encoding.detect(uint8);
+  // UTF系と明示的に判定できた場合のみUTF系で読む。
+  // それ以外（SJIS/ASCII/falsy）はCP932を包含するSJIS固定。
+  // Encoding.detect()はCP932内の特殊文字（異字体等）を誤ってUTF8と判定することがあるため。
+  const from = (detected === 'UTF8' || detected === 'UTF16' || detected === 'UTF16BE' || detected === 'UTF16LE')
+    ? detected : 'SJIS';
+  const codes = Encoding.convert(uint8, { to: 'UNICODE', from, type: 'array' });
+  return Encoding.codeToString(codes).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+function toSjisUint8(text) {
+  const codes = Encoding.stringToCode(text);
+  return new Uint8Array(Encoding.convert(codes, { to: 'SJIS', from: 'UNICODE', type: 'array' }));
+}
+function toCsvLine(row) {
+  return row.map(c => '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"').join(',');
+}
+function parseCsvLine(line) {
+  const result = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') { inQ = false; }
+      else { cur += ch; }
+    } else {
+      if (ch === '"') { inQ = true; }
+      else if (ch === ',') { result.push(cur); cur = ''; }
+      else { cur += ch; }
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+// ============================================================
+// Utilities
+// ============================================================
+function toSafeFilename(name) {
+  return name.replace(/[\/\\:*?"<>|]/g, '_').trim();
+}
+
+// ============================================================
+// Conversion logic
+// ============================================================
+function buildAddress(state, city, addr1, addr2, addr3) {
+  const base = [state, city, addr1].filter(Boolean).join('');
+  const isNum = /^[\d０-９]/.test(addr2);
+  if (addr3)           return { fullAddress: base + addr2, building: addr3 };
+  if (!addr2 || isNum) return { fullAddress: base + addr2, building: '' };
+  return { fullAddress: base, building: addr2 };
+}
+
+function convertToB2(tsvText, shipDate, invoiceType, store) {
+  const normalized = tsvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n').filter(l => l.length > 0);
+  const headers = lines[0].replace(/^﻿/, '').split('\t').map(h => h.trim());
+  const colIdx = {}; headers.forEach((h, i) => { colIdx[h] = i; });
+  const gc = (cols, name) => { const i = colIdx[name]; return i != null ? (cols[i]||'').trim() : ''; };
+
+  const groups = new Map();
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split('\t');
+    const oid = gc(cols, 'order-id');
+    const key = oid || `_row_${i}`;
+    if (!groups.has(key)) {
+      const { fullAddress, building } = buildAddress(
+        gc(cols,'ship-state'), gc(cols,'ship-city'),
+        gc(cols,'ship-address-1'), gc(cols,'ship-address-2'), gc(cols,'ship-address-3'));
+      groups.set(key, {
+        orderId: oid,
+        recipientName: gc(cols,'recipient-name'),
+        phone: gc(cols,'buyer-phone-number'),
+        postal: gc(cols,'ship-postal-code'),
+        fullAddress, building, products:[], quantities:[], itemIds:[]
+      });
+    }
+    const g = groups.get(key);
+    g.products.push(gc(cols,'product-name'));
+    g.quantities.push(parseInt(gc(cols,'quantity-purchased')||'1',10)||1);
+    g.itemIds.push(gc(cols,'order-item-id'));
+  }
+
+  const rows = [];
+  for (const [,g] of groups) {
+    if (!g.orderId) continue;
+    const row = new Array(95).fill('');
+    row[0]=g.orderId; row[1]=invoiceType; row[4]=shipDate;
+    row[8]=g.phone; row[10]=g.postal; row[11]=g.fullAddress; row[12]=g.building;
+    row[15]=g.recipientName; row[19]=store.tel; row[21]=store.postal;
+    row[22]=store.address; row[23]=store.building; row[24]=store.name;
+    row[27]=(g.products[0]||'').slice(0,25).trimEnd();
+    row[32]=(g.itemIds[0]||'')+' ';
+    row[38]=String(g.quantities.reduce((a,v)=>a+v,0));
+    row[39]=store.customerCode; row[41]=store.fareCode;
+    rows.push(row);
+  }
+  return rows;
+}
+
+function convertToShipmentNotify(csvText) {
+  const stores = loadStores();
+  const storeMap = {};
+  stores.forEach(s => { storeMap[s.name] = s; });
+  const storeNames = stores.map(s => s.name);
+
+  const lines = csvText.split('\n').filter(l => l.trim());
+  if (lines.length < 2) throw new Error('データ行が見つかりません');
+
+  const headers = parseCsvLine(lines[0]).map(h => h.trim());
+  const colIdx = {}; headers.forEach((h,i) => { colIdx[h] = i; });
+  const gc = (row, name) => { const i = colIdx[name]; return i != null ? (row[i]||'').trim() : ''; };
+
+  if (colIdx['伝票番号'] == null) {
+    throw new Error('このファイルは「発行済みデータ」CSVではありません。\nB2クラウドでラベル発行後にエクスポートした\nyyyymmddHHMMSS_発行済テ_ータ.csv を使用してください。');
+  }
+
+  // storeKey -> Map(orderId -> dataRow)  ※同一order-idは伝票番号をカンマ結合
+  const storeOrderMaps = new Map();
+  let shipDateStr = '';
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine(lines[i]);
+    const orderId     = gc(row, 'お客様管理番号');
+    const trackingRaw = gc(row, '伝票番号');
+    const dateRaw     = gc(row, '出荷予定日');
+    const invoiceType = gc(row, '送り状種類');
+    const storeName   = gc(row, 'ご依頼主名');
+    if (!orderId || !trackingRaw) continue;
+
+    const tracking = String(parseInt(trackingRaw.replace(/\.0+$/,''), 10));
+    const [y, m, d] = dateRaw.split('/');
+    const isoDate = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T00:00:00+09:00`;
+    if (!shipDateStr) shipDateStr = `${y}${m.padStart(2,'0')}${d.padStart(2,'0')}`;
+
+    let storeKey = storeNames.find(k => k === storeName)
+      || storeNames.find(k => storeName.includes(k) || k.includes(storeName))
+      || storeName;
+
+    if (!storeOrderMaps.has(storeKey)) storeOrderMaps.set(storeKey, new Map());
+    const orderMap = storeOrderMaps.get(storeKey);
+
+    const shipMethod = SHIP_METHOD_MAP[invoiceType] || '宅急便';
+
+    if (orderMap.has(orderId)) {
+      // 分割出荷：同一order-idに別の伝票番号 → カンマ結合
+      orderMap.get(orderId)[6] += ',' + tracking;
+    } else {
+      const data = Array(19).fill('');
+      data[0]=orderId; data[3]=isoDate; data[4]='YAMATO';
+      data[6]=tracking; data[7]=shipMethod;
+      orderMap.set(orderId, data);
+    }
+  }
+
+  if (storeOrderMaps.size === 0) throw new Error('有効なデータ行が見つかりません');
+
+  const results = [];
+  for (const [storeKey, orderMap] of storeOrderMaps) {
+    const store = storeMap[storeKey] || null;
+    const prefix = toSafeFilename(storeKey) + '_';
+    const dataRows = Array.from(orderMap.values());
+    results.push({ store, storeKey, dataRows, shipDateStr, prefix });
+  }
+  return results;
+}
+
+// ============================================================
+// Tab switching
+// ============================================================
+function activateTab(tabId) {
+  document.querySelectorAll('.tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === tabId));
+  document.querySelectorAll('.tab-content').forEach(c =>
+    c.classList.toggle('active', c.id === `tab-${tabId}`));
+}
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => activateTab(tab.dataset.tab));
+});
+
+// ============================================================
+// Settings tab
+// ============================================================
+function esc(v) {
+  return String(v||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function addStoreCard(store) {
+  const container = document.getElementById('settings-cards');
+  const idx = container.children.length + 1;
+  const s = store || {};
+  const card = document.createElement('div');
+  card.className = 'store-card';
+  card.innerHTML = `
+    <div class="store-card-header">
+      <span class="store-card-title">店舗 ${idx}</span>
+      <button class="btn-delete-store" type="button">削除</button>
+    </div>
+    <div class="store-card-grid">
+      <div class="field full">
+        <label>店舗名（依頼主名）</label>
+        <input type="text" data-field="name" value="${esc(s.name)}" placeholder="例：〇〇ショップ">
+      </div>
+      <div class="field">
+        <label>電話番号（ハイフンなし）</label>
+        <input type="text" data-field="tel" value="${esc(s.tel)}" placeholder="例：0312345678">
+      </div>
+      <div class="field">
+        <label>郵便番号（ハイフンなし）</label>
+        <input type="text" data-field="postal" value="${esc(s.postal)}" placeholder="例：1000001">
+      </div>
+      <div class="field full">
+        <label>住所</label>
+        <input type="text" data-field="address" value="${esc(s.address)}" placeholder="例：東京都千代田区千代田1-1">
+      </div>
+      <div class="field full">
+        <label>会社名・建物名</label>
+        <input type="text" data-field="building" value="${esc(s.building)}" placeholder="例：株式会社○○">
+      </div>
+      <div class="field">
+        <label>請求先顧客コード</label>
+        <input type="text" data-field="customerCode" value="${esc(s.customerCode)}" placeholder="例：0123456789012">
+      </div>
+      <div class="field">
+        <label>運賃管理番号</label>
+        <input type="text" data-field="fareCode" value="${esc(s.fareCode)}" placeholder="例：01">
+      </div>
+    </div>
+  `;
+  card.querySelector('.btn-delete-store').addEventListener('click', () => {
+    card.remove();
+    renumberCards();
+  });
+  container.appendChild(card);
+}
+
+function renumberCards() {
+  document.querySelectorAll('.store-card-title').forEach((el, i) => {
+    el.textContent = `店舗 ${i + 1}`;
+  });
+}
+
+function renderSettingsCards() {
+  const container = document.getElementById('settings-cards');
+  container.innerHTML = '';
+  const stores = loadStores();
+  if (stores.length === 0) { addStoreCard(); } else { stores.forEach(s => addStoreCard(s)); }
+}
+
+document.getElementById('add-store-btn').addEventListener('click', () => addStoreCard());
+
+document.getElementById('save-settings-btn').addEventListener('click', () => {
+  const cards = document.querySelectorAll('.store-card');
+  const stores = [];
+  let hasError = false;
+
+  cards.forEach(card => {
+    const get = f => (card.querySelector(`[data-field="${f}"]`)||{}).value || '';
+    const name = get('name').trim();
+    if (!name) { hasError = true; return; }
+    stores.push({
+      name,
+      tel:          get('tel').trim(),
+      postal:       get('postal').trim(),
+      address:      get('address').trim(),
+      building:     get('building').trim(),
+      customerCode: get('customerCode').trim(),
+      fareCode:     get('fareCode').trim(),
+    });
+  });
+
+  const result = document.getElementById('settings-result');
+  if (hasError || stores.length === 0) {
+    result.innerHTML = '<div class="result-item error" style="display:block;margin-top:0;">店舗名は必須です。すべての店舗に店舗名を入力してください。</div>';
+    return;
+  }
+
+  saveStores(stores);
+  renderStep1Sections();
+  result.innerHTML = '<div class="result-item success" style="display:block;margin-top:0;">✓ 保存しました</div>';
+  setTimeout(() => { result.innerHTML = ''; activateTab('step1'); }, 800);
+});
+
+// ============================================================
+// STEP1
+// ============================================================
+const s1ShipDate = document.getElementById('s1-shipDate');
+const s1Invoice  = document.getElementById('s1-invoiceType');
+const s1Convert  = document.getElementById('s1-convertBtn');
+const s1Sections = document.getElementById('s1-storeSections');
+const s1Results  = document.getElementById('s1-results');
+const s1InfoList = document.getElementById('s1-storeInfoList');
+
+let s1Buffers = {};
+
+function renderStep1Sections() {
+  const stores = loadStores();
+  s1Sections.innerHTML = '';
+  s1InfoList.innerHTML = '';
+  s1Buffers = {};
+  s1Convert.disabled = true;
+  s1Results.innerHTML = '';
+
+  if (stores.length === 0) {
+    s1Sections.innerHTML = '<div class="info-box">店舗が設定されていません。<strong>設定タブ</strong>から店舗情報を登録してください。</div>';
+    return;
+  }
+
+  stores.forEach(store => {
+    s1Buffers[store.name] = null;
+
+    // 依頼主情報ボックス
+    const info = document.createElement('div');
+    info.className = 'info-box';
+    const p = store.postal || '';
+    const telFmt = (store.tel || '').replace(/(\d{2,4})(\d{4})(\d{4})/, '$1-$2-$3');
+    info.innerHTML = `<strong>${store.name}</strong>（${store.building}）<br>`
+      + `〒${p.slice(0,3)}-${p.slice(3)} ${store.address}<br>TEL: ${telFmt}`;
+    s1InfoList.appendChild(info);
+
+    // ドロップゾーン
+    const wrap = document.createElement('div');
+    wrap.className = 'store-section';
+    const hdr = document.createElement('div');
+    hdr.className = 'store-section-header';
+    hdr.textContent = store.name;
+
+    const dz = document.createElement('div');
+    dz.className = 'dropzone';
+    dz.innerHTML = `<div class="dropzone-icon">📦</div>
+      <div class="dropzone-text">ここにファイルをドロップ<br>またはクリックして選択</div>
+      <div class="dropzone-hint">Amazon未出荷注文レポート（.txt / .tsv）</div>`;
+
+    const fi = document.createElement('input');
+    fi.type='file'; fi.accept='.txt,.tsv,.csv'; fi.style.display='none';
+
+    dz.addEventListener('click', () => fi.click());
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('drag-over');
+      if (e.dataTransfer.files[0]) s1LoadFile(e.dataTransfer.files[0], store.name, dz);
+    });
+    fi.addEventListener('change', e => {
+      if (e.target.files[0]) s1LoadFile(e.target.files[0], store.name, dz);
+    });
+
+    wrap.appendChild(hdr); wrap.appendChild(dz); wrap.appendChild(fi);
+    s1Sections.appendChild(wrap);
+  });
+}
+
+function s1LoadFile(file, key, dz) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    s1Buffers[key] = e.target.result;
+    dz.classList.add('has-file');
+    dz.querySelector('.dropzone-text').textContent = `✓ ${file.name}`;
+    s1Convert.disabled = !Object.values(s1Buffers).some(Boolean);
+    s1Results.innerHTML = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+s1Convert.addEventListener('click', async () => {
+  const stores = loadStores();
+  const [y, m, d] = s1ShipDate.value.split('-');
+  const shipDate   = `${y}/${parseInt(m)}/${parseInt(d)}`;
+  const dateStr    = s1ShipDate.value.replace(/-/g,'');
+  const folderName = `B2クラウド_${dateStr}`;
+  s1Results.innerHTML = '';
+
+  const allRows = []; let totalCount = 0;
+
+  stores.forEach(store => {
+    if (!s1Buffers[store.name]) return;
+    const item = document.createElement('div');
+    try {
+      const text = decodeBuffer(s1Buffers[store.name]);
+      const rows = convertToB2(text, shipDate, s1Invoice.value, store);
+      if (rows.length === 0) throw new Error('変換できるデータがありません');
+      allRows.push(...rows); totalCount += rows.length;
+      item.className = 'result-item success';
+      item.textContent = `✓ ${store.name}：${rows.length}件`;
+    } catch(e) {
+      item.className = 'result-item error';
+      item.textContent = `⚠ ${store.name}：${e.message}`;
+    }
+    s1Results.appendChild(item);
+  });
+
+  if (!allRows.length) return;
+
+  const csvText = [toCsvLine(B2_HEADER), ...allRows.map(toCsvLine)].join('\r\n') + '\r\n';
+  const filename = `b2cloud_${dateStr}.csv`;
+
+  try {
+    const rootDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const subDir  = await rootDir.getDirectoryHandle(folderName, { create: true });
+    const fh = await subDir.getFileHandle(filename, { create: true });
+    const wr = await fh.createWritable(); await wr.write(toSjisUint8(csvText)); await wr.close();
+    const ok = document.createElement('div');
+    ok.className = 'result-item success'; ok.style.marginTop = '6px';
+    ok.textContent = `✓ ${folderName}/${filename}（${totalCount}件）を保存しました`;
+    s1Results.appendChild(ok);
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      const err = document.createElement('div');
+      err.className = 'result-item error'; err.style.marginTop = '6px';
+      err.textContent = `⚠ 保存失敗：${e.message}`; s1Results.appendChild(err);
+    }
+  }
+});
+
+// ============================================================
+// STEP2
+// ============================================================
+const s2Dropzone  = document.getElementById('s2-dropzone');
+const s2DzText    = document.getElementById('s2-dropzone-text');
+const s2FileInput = document.getElementById('s2-fileInput');
+const s2Convert   = document.getElementById('s2-convertBtn');
+const s2Results   = document.getElementById('s2-results');
+const s2Files     = [];
+
+s2Dropzone.addEventListener('click', () => s2FileInput.click());
+s2Dropzone.addEventListener('dragover', e => { e.preventDefault(); s2Dropzone.classList.add('drag-over'); });
+s2Dropzone.addEventListener('dragleave', () => s2Dropzone.classList.remove('drag-over'));
+s2Dropzone.addEventListener('drop', e => {
+  e.preventDefault(); s2Dropzone.classList.remove('drag-over');
+  s2HandleFiles(Array.from(e.dataTransfer.files));
+});
+s2FileInput.addEventListener('change', e => s2HandleFiles(Array.from(e.target.files)));
+
+function s2HandleFiles(files) {
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      s2Files.push({ name: file.name, buffer: e.target.result });
+      loaded++;
+      if (loaded === files.length) {
+        s2DzText.innerHTML = `✓ ${s2Files.length}ファイル選択済み`;
+        s2Dropzone.classList.add('has-file');
+        s2Convert.disabled = false;
+        s2Results.innerHTML = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+s2Convert.addEventListener('click', async () => {
+  s2Results.innerHTML = '';
+  const outputFiles = [];
+  const foldersByDate = new Map();
+
+  for (const { name, buffer } of s2Files) {
+    try {
+      const text = decodeBuffer(buffer);
+      const storeResults = convertToShipmentNotify(text);
+      for (const { storeKey, dataRows, shipDateStr, prefix } of storeResults) {
+        const tsvText = [...NOTIFY_HEADER, ...dataRows].map(r => r.join('\t')).join('\r\n') + '\r\n';
+        const baseFilename = `${prefix}amazon_shipment_confirm_${shipDateStr}`;
+        outputFiles.push({ shipDateStr, baseFilename, data: toSjisUint8(tsvText) });
+        const item = document.createElement('div');
+        item.className = 'result-item success';
+        item.textContent = `✓ ${storeKey}：${dataRows.length}件（${name}）`;
+        s2Results.appendChild(item);
+      }
+    } catch(e) {
+      const item = document.createElement('div');
+      item.className = 'result-item error';
+      item.textContent = `⚠ ${name}：${e.message}`;
+      s2Results.appendChild(item);
+    }
+  }
+
+  if (!outputFiles.length) return;
+
+  try {
+    const rootDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    for (const { shipDateStr, baseFilename, data } of outputFiles) {
+      const folderName = `FBM出荷通知_${shipDateStr}`;
+      let subDir;
+      if (foldersByDate.has(folderName)) {
+        subDir = foldersByDate.get(folderName);
+      } else {
+        subDir = await rootDir.getDirectoryHandle(folderName, { create: true });
+        foldersByDate.set(folderName, subDir);
+      }
+      let filename = `${baseFilename}.txt`; let n = 2;
+      while (true) {
+        try { await subDir.getFileHandle(filename, { create: false }); filename=`${baseFilename}_${n}.txt`; n++; }
+        catch { break; }
+      }
+      const fh = await subDir.getFileHandle(filename, { create: true });
+      const wr = await fh.createWritable(); await wr.write(data); await wr.close();
+    }
+    const ok = document.createElement('div');
+    ok.className = 'result-item success'; ok.style.marginTop = '6px';
+    ok.textContent = `✓ ${outputFiles.length}ファイルを保存しました`;
+    s2Results.appendChild(ok);
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      const err = document.createElement('div');
+      err.className = 'result-item error'; err.style.marginTop = '6px';
+      err.textContent = `⚠ 保存失敗：${e.message}`; s2Results.appendChild(err);
+    }
+  }
+});
+
+// ============================================================
+// Initialize
+// ============================================================
+(function init() {
+  const stores = loadStores();
+  renderSettingsCards();
+  renderStep1Sections();
+
+  const today = new Date();
+  s1ShipDate.value = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  activateTab(stores.length === 0 ? 'settings' : 'step1');
+})();
+</script>
+</body>
+</html>

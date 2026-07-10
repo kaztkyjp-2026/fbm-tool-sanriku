@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>使い方マニュアル - FBM出荷自動化ツール</title>
+  <link rel="icon" type="image/png" href="./assets/icon.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Meiryo", sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+    .container {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 700px;
+      overflow: hidden;
+    }
+    .app-header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 24px 36px 20px;
+    }
+    .app-logo { font-size: 11px; color: #888; letter-spacing: 0.08em; margin-bottom: 4px; }
+    .app-title { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+    .back-link { font-size: 12px; color: #aaa; text-decoration: none; }
+    .back-link:hover { color: #fff; }
+
+    .content { padding: 36px; }
+
+    h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin: 28px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #e77a1a;
+    }
+    h2:first-child { margin-top: 0; }
+
+    h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #444;
+      margin: 16px 0 8px;
+    }
+
+    p {
+      font-size: 13px;
+      color: #555;
+      line-height: 1.8;
+      margin-bottom: 10px;
+    }
+
+    .step-box {
+      background: #fafafa;
+      border: 1px solid #e8e8e8;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 14px;
+    }
+    .step-num {
+      display: inline-block;
+      background: #1a1a2e;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-bottom: 8px;
+    }
+    .step-box p { margin-bottom: 0; }
+
+    .warning {
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 13px;
+      color: #92400e;
+      margin-bottom: 14px;
+      line-height: 1.7;
+    }
+
+    .info-box {
+      background: #f0f6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #1e40af;
+      margin-bottom: 14px;
+      line-height: 1.7;
+    }
+
+    .ok-box {
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #166534;
+      margin-bottom: 14px;
+      line-height: 1.7;
+    }
+    .faq-answer {
+      background: #f9f9f9;
+      border-left: 3px solid #e77a1a;
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.8;
+      margin-bottom: 18px;
+    }
+    .faq-answer table { margin-bottom: 0; margin-top: 10px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+    th {
+      background: #f0f2f5;
+      padding: 9px 12px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 12px;
+      border: 1px solid #e0e0e0;
+    }
+    td {
+      padding: 9px 12px;
+      border: 1px solid #e0e0e0;
+      line-height: 1.6;
+    }
+
+    .footer {
+      border-top: 1px solid #eee;
+      padding: 16px 36px;
+      background: #fafafa;
+      font-size: 12px;
+      color: #888;
+    }
+    .footer a { color: #2563eb; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="app-header">
+    <div class="app-logo">Amazon FBM 出荷自動化 ／ 無料ツール</div>
+    <div class="app-title">使い方マニュアル</div>
+    <a href="./index.html" class="back-link">← ツールに戻る</a>
+  </div>
+
+  <div class="content">
+
+    <!-- 動作環境 -->
+    <h2>動作環境</h2>
+    <div class="warning">
+      ⚠️ <strong>ファイルの保存方法がブラウザによって異なります。</strong><br>
+      PC版 Chrome / Edge：保存先フォルダを選択して直接保存できます。<br>
+      iPhone / Android / Safari / Firefox：ダウンロードフォルダに自動保存されます。
+    </div>
+    <div class="info-box">
+      🔒 このツールはすべての処理をブラウザ内で完結します。入力したデータが外部のサーバーに送信されることはありません。
+    </div>
+
+    <!-- 初期設定 -->
+    <h2>初期設定（初回のみ）</h2>
+    <p>初回起動時は「設定」タブが開きます。ヤマトB2クラウドに登録している依頼主（発送元）情報を入力してください。</p>
+
+    <div class="step-box">
+      <div class="step-num">1</div>
+      <p>「店舗名（依頼主名）」にB2クラウドの依頼主名を<strong>正確に</strong>入力してください。STEP 2でのファイル自動識別に使用します。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">2</div>
+      <p>電話番号・郵便番号はハイフンなしで入力します（例：0312345678 / 1000001）。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">3</div>
+      <p>複数店舗ある場合は「＋ 店舗を追加」で追加できます。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">4</div>
+      <p>「保存してSTEP 1へ」を押すと設定がブラウザに保存されます。次回からは入力不要です。</p>
+    </div>
+
+    <!-- STEP1 -->
+    <h2>STEP 1：B2クラウド取込CSV の生成</h2>
+    <p>Amazonセラーセントラルからダウンロードした未出荷注文レポートを、ヤマトB2クラウドに取り込める形式に変換します。</p>
+
+    <h3>使用するファイル</h3>
+    <p>Amazonセラーセントラル →「注文管理」→「注文レポート」→「未出荷注文」からダウンロードしたファイル（.txt / .tsv）</p>
+
+    <h3>手順</h3>
+    <div class="step-box">
+      <div class="step-num">1</div>
+      <p>出荷予定日・送り状種類（ネコポス / 宅急便 / 宅急便コンパクト）を選択します。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">2</div>
+      <p>店舗ごとのドロップゾーンに、それぞれの未出荷レポートファイルをドラッグ＆ドロップします。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">3</div>
+      <p>「変換して保存」を押します。PC版Chrome / Edgeでは<strong>保存先フォルダを選ぶ画面</strong>が開き、選んだフォルダの中に自動でサブフォルダとCSVファイルが作成されます。iPhone / Safari / Firefoxではダウンロードフォルダに直接保存されます。</p>
+    </div>
+
+    <h3>出力ファイル</h3>
+    <table>
+      <tr><th>項目</th><th>内容</th></tr>
+      <tr><td>フォルダ名</td><td>B2クラウド_YYYYMMDD（PC版のみ自動作成）</td></tr>
+      <tr><td>ファイル名</td><td>b2cloud_YYYYMMDD.csv（全店舗統合・1ファイル）</td></tr>
+      <tr><td>形式</td><td>Shift-JIS、CSV、95列</td></tr>
+    </table>
+
+    <!-- STEP2 -->
+    <h2>STEP 2：Amazon出荷通知TXT の生成</h2>
+    <p>ヤマトB2クラウドでラベルを発行したあと、発行済みデータをエクスポートしてこのツールに読み込ませます。</p>
+
+    <h3>使用するファイル</h3>
+    <div class="warning">
+      ⚠️ B2クラウドへの「取込用CSV」<strong>ではなく</strong>、ラベル発行後にエクスポートする<strong>「発行済みデータ」CSV</strong>（ファイル名例：<code>20260530143000_発行済テ_ータ.csv</code>）を使用してください。
+    </div>
+    <div class="warning">
+      ⚠️ B2クラウドのエクスポート画面で<strong>「1行目に見出しを出力する」に必ずチェックを入れてください。</strong>チェックなしで出力したファイルはこのツールで読み込めません。
+    </div>
+
+    <h3>手順</h3>
+    <div class="step-box">
+      <div class="step-num">1</div>
+      <p>B2クラウドでラベル発行後、「発行済みデータ」CSVをエクスポートします。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">2</div>
+      <p>STEP 2タブのドロップゾーンにCSVをドラッグ＆ドロップします。複数ファイルの同時選択も可能です。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">3</div>
+      <p>「変換して保存」を押します。PC版Chrome / Edgeでは<strong>保存先フォルダを選ぶ画面</strong>が開き、選んだフォルダの中に自動でサブフォルダとファイルが作成されます。iPhone / Safari / Firefoxではダウンロードフォルダに直接保存されます。店舗は依頼主名から自動識別され、店舗ごとのファイルが生成されます。</p>
+    </div>
+    <div class="step-box">
+      <div class="step-num">4</div>
+      <p>生成されたファイルをAmazonセラーセントラル →「注文管理」→「出荷通知のアップロード」からアップロードします。</p>
+    </div>
+
+    <h3>出力ファイル</h3>
+    <table>
+      <tr><th>項目</th><th>内容</th></tr>
+      <tr><td>フォルダ名</td><td>FBM出荷通知_YYYYMMDD（PC版のみ自動作成）</td></tr>
+      <tr><td>ファイル名</td><td>{店舗名}_amazon_shipment_confirm_YYYYMMDD.txt</td></tr>
+      <tr><td>同日2本目以降</td><td>…_2.txt、…_3.txt（自動採番、PC版のみ）</td></tr>
+      <tr><td>形式</td><td>Shift-JIS、タブ区切り</td></tr>
+    </table>
+
+    <!-- よくある質問 -->
+    <h2>よくある質問</h2>
+
+    <h3>アップロード後に「90061」という警告が出る</h3>
+    <div class="faq-answer">
+      問題ありません。出荷元住所に関する警告ですが、出荷通知は正常に処理されています。
+    </div>
+
+    <h3>iPhoneやSafariで使えますか？</h3>
+    <div class="faq-answer">
+      変換処理は問題なく動作します。ただし、PC版Chrome / Edgeのような「保存先フォルダの選択」はできません。変換後のファイルはダウンロードフォルダに自動保存されます。
+    </div>
+
+    <h3>請求先顧客コード・運賃管理番号とは何ですか？</h3>
+    <div class="faq-answer">
+      どちらもヤマト運輸との契約時に付与される番号です。B2クラウドにログインし「1件ずつ発行」を開くと、基本情報の「請求先」欄に表示されています。
+      <table>
+        <tr><th>項目</th><th>桁数</th><th>内容</th></tr>
+        <tr><td>請求先顧客コード</td><td>9〜12桁</td><td>請求先を管理する番号。ヤマト運輸との契約ごとに付与される。</td></tr>
+        <tr><td>運賃管理番号</td><td>2桁</td><td>契約ごとの運賃区分を示す番号。「01」が一般的。</td></tr>
+      </table>
+      不明な場合はヤマト運輸の担当営業所またはヤマトビジネスメンバーズのサポートにお問い合わせください。
+    </div>
+
+    <h3>設定をリセットしたい</h3>
+    <div class="faq-answer">
+      設定タブを開き、不要な店舗を削除して「保存」してください。全削除後に保存するとリセットされます。
+    </div>
+
+    <h3>フォルダを選んでもエラーになる・選択できない</h3>
+    <div class="faq-answer">
+      デスクトップ直下やドキュメント直下など、一部のフォルダは保存先として選択できない場合があります。保存用の専用フォルダを作成してから選択してください。<br>
+      例：ドキュメントの中に「FBM出荷」というフォルダを作り、そこを指定する。
+    </div>
+
+  </div>
+
+  <div class="footer">
+    要望・不具合：
+    <a href="https://github.com/ec-tools-jp/fbm-tool/issues" target="_blank">GitHub Issues</a>
+    ｜
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdeymUyCmegcPe6v2r4eOmVLpl-8I2j2rjXoO_uYbWxo1DYMQ/viewform" target="_blank">お問い合わせフォーム</a>
+    <br><span style="font-size:11px;color:#ccc;">© 2026 ec-tools-jp / MIT License</span>
+  </div>
+
+</div>
+</body>
+</html>
