@@ -704,8 +704,8 @@ function convertToShipmentNotify(csvText) {
     const shipMethod = SHIP_METHOD_MAP[invoiceType] || '宅急便';
 
     if (orderMap.has(orderId)) {
-      // 分割出荷：同一order-idに別の伝票番号 → カンマ結合
-      orderMap.get(orderId)[6] += ',' + tracking;
+      // 分割出荷：同一order-idに複数伝票 → Amazon出荷通知は先頭1本のみ保持（連結しない）。
+      // フラットファイルは複数梱包を表現できず、有効番号1本でVTR合格。2個目以降の伝票は物理発送済み。
     } else {
       const data = Array(19).fill('');
       data[0]=orderId; data[3]=isoDate; data[4]='YAMATO';
