@@ -554,7 +554,11 @@ function buildAddress(state, city, addr1, addr2, addr3) {
   return { fullAddress: base, building: addr2 };
 }
 
-function convertToB2(tsvText, shipDate, invoiceType, store) {
+// 共通パーサ（純粋改善・公開版へそのまま移植可）：
+// Amazon 未出荷レポート TSV をヘッダ名ベースで parse し、order-id 単位の
+// groups 配列を返す。convertToB2（B2行化）と PICKING の両方がこれを入力に使う。
+// ※従来 convertToB2 内に閉じていた groups 構築を抽出しただけで、挙動は不変。
+function parseAmazonTsvGroups(tsvText) {
   const normalized = tsvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = normalized.split('\n').filter(l => l.length > 0);
   const headers = lines[0].replace(/^﻿/, '').split('\t').map(h => h.trim());
@@ -572,6 +576,7 @@ function convertToB2(tsvText, shipDate, invoiceType, store) {
         gc(cols,'ship-address-1'), gc(cols,'ship-address-2'), gc(cols,'ship-address-3'));
       groups.set(key, {
         orderId: oid,
+        sku: gc(cols,'sku'),   // merchant SKU（クラスタキー。列が無ければ空→後段でフル商品名代替）
         recipientName: gc(cols,'recipient-name'),
         phone: gc(cols,'buyer-phone-number'),
         postal: gc(cols,'ship-postal-code'),
@@ -583,23 +588,76 @@ function convertToB2(tsvText, shipDate, invoiceType, store) {
     g.quantities.push(parseInt(gc(cols,'quantity-purchased')||'1',10)||1);
     g.itemIds.push(gc(cols,'order-item-id'));
   }
-
-  const rows = [];
-  for (const [,g] of groups) {
-    if (!g.orderId) continue;
-    const row = new Array(95).fill('');
-    row[0]=g.orderId; row[1]=invoiceType; row[4]=shipDate;
-    row[8]=g.phone; row[10]=g.postal; row[11]=g.fullAddress; row[12]=g.building;
-    row[15]=g.recipientName; row[19]=store.tel; row[21]=store.postal;
-    row[22]=store.address; row[23]=store.building; row[24]=store.name;
-    row[27]=(g.products[0]||'').slice(0,25).trimEnd();
-    row[32]=(g.itemIds[0]||'')+' ';
-    row[38]=String(g.quantities.reduce((a,v)=>a+v,0));
-    row[39]=store.customerCode; row[41]=store.fareCode;
-    rows.push(row);
-  }
-  return rows;
+  return Array.from(groups.values());
 }
+
+// 単一注文 group → B2クラウド1行。convertToB2 の内側ループを抽出（列・値は不変）。
+function buildB2Row(g, shipDate, invoiceType, store) {
+  const row = new Array(95).fill('');
+  row[0]=g.orderId; row[1]=invoiceType; row[4]=shipDate;
+  row[8]=g.phone; row[10]=g.postal; row[11]=g.fullAddress; row[12]=g.building;
+  row[15]=g.recipientName; row[19]=store.tel; row[21]=store.postal;
+  row[22]=store.address; row[23]=store.building; row[24]=store.name;
+  row[27]=(g.products[0]||'').slice(0,25).trimEnd();
+  row[32]=(g.itemIds[0]||'')+' ';
+  row[38]=String(g.quantities.reduce((a,v)=>a+v,0));
+  row[39]=store.customerCode; row[41]=store.fareCode;
+  return row;
+}
+
+// 公開版互換：groups→B2行配列（列・値・件数・行順すべて従来通り）。
+function convertToB2(tsvText, shipDate, invoiceType, store) {
+  return parseAmazonTsvGroups(tsvText)
+    .filter(g => g.orderId)
+    .map(g => buildB2Row(g, shipDate, invoiceType, store));
+}
+
+// ============================================================
+// ==== ORDER PIPELINE (shared: drives B2 row order + picking) ====
+// 注文単位の中間レコードを作り、統一ソート順を B2 CSV 行順とピッキング順の
+// 両方に適用する。B2 の列・値は不変で「行順のみ」変わる（設定駆動＝還流互換）。
+// クラスタキー = sku（Amazon TSV の merchant SKU。無ければフル商品名で代替）。
+// ============================================================
+function buildOrderRecords(groups, shipDate, invoiceType, store, storeIndex) {
+  const recs = [];
+  for (const g of groups) {
+    if (!g.orderId) continue;
+    const qty     = g.quantities.reduce((a,v)=>a+v,0);
+    const isMulti = g.products.length > 1;
+    const sku     = (g.sku && g.sku.trim()) ? g.sku.trim() : (g.products[0] || '');
+    const lines   = [];
+    for (let i = 0; i < g.products.length; i++) {
+      lines.push({ name: g.products[i] || '', quantity: g.quantities[i] || 0 });
+    }
+    recs.push({
+      b2Row: buildB2Row(g, shipDate, invoiceType, store),
+      storeIndex, sku, qty, isMulti,
+      picking: { orderId: g.orderId, lines }
+    });
+  }
+  return recs;
+}
+
+function sortOrderRecords(records) {
+  // クラスタ件数 = 同一 sku の単一商品注文数（複数商品注文は対象外）
+  const clusterCount = new Map();
+  for (const r of records) if (!r.isMulti) clusterCount.set(r.sku, (clusterCount.get(r.sku)||0)+1);
+  const cc = r => clusterCount.get(r.sku) || 0;
+  return records.slice().sort((a, b) => {
+    if (a.storeIndex !== b.storeIndex) return a.storeIndex - b.storeIndex;   // 1: 店舗設定順
+    if (a.isMulti !== b.isMulti) return a.isMulti ? 1 : -1;                  // 2: 単一→複数(末尾)
+    if (a.isMulti && b.isMulti) {                                            // 複数同士: qty降順→orderId
+      if (b.qty !== a.qty) return b.qty - a.qty;
+      return String(a.picking.orderId).localeCompare(String(b.picking.orderId));
+    }
+    const ca = cc(a), cb = cc(b);                                            // 単一同士:
+    if (cb !== ca) return cb - ca;                                          // 3: クラスタ件数降順
+    if (a.sku !== b.sku) return String(a.sku).localeCompare(String(b.sku)); // クラスタを連続させる(安定)
+    if (b.qty !== a.qty) return b.qty - a.qty;                              // 4: クラスタ内 qty 降順
+    return String(a.picking.orderId).localeCompare(String(b.picking.orderId));
+  });
+}
+// ==== ORDER PIPELINE — END ====
 
 function convertToShipmentNotify(csvText) {
   const stores = loadStores();
@@ -667,6 +725,149 @@ function convertToShipmentNotify(csvText) {
   }
   return results;
 }
+
+// ============================================================
+// ==== PICKING FEATURE (portable to public fbm-tool) — BEGIN ====
+// 注文別ピッキングシート（商品名／数量）。データ源は Amazon TSV の
+// parse 結果（groups）のみ。商品マスタ・MID・レシピ展開は含めない（L1）。
+// 描画は印刷CSS＋window.print()。外部ライブラリ非依存。
+// 公開版へは、この BEGIN〜END の島を丸ごとコピーで移植できる。
+// 三陸固有ロジック（MID付与・レシピ展開）は enrichPickingItems() のみに閉じ、
+// 公開版では enrichPickingItems を no-op のまま保つこと。
+// ============================================================
+
+// 汎用：ソート済みレコード → ピッキング表示データ（PII非搭載）。
+//   total  : 単一商品クラスタ集計 [{name, sku, totalQty, orderCount}]（注文数降順）＋ 複数商品件数
+//   single : 注文別 [{orderId, lines:[{name, quantity}]}]（レコード順＝統一ソート順）
+function buildPickingItems(records) {
+  const single = records.map(r => ({ orderId: r.picking.orderId, lines: r.picking.lines }));
+
+  const clusters = new Map(); // sku → {name, sku, totalQty, orderCount}
+  let multiCount = 0;
+  for (const r of records) {
+    if (r.isMulti) { multiCount++; continue; }
+    if (!clusters.has(r.sku)) {
+      const name = (r.picking.lines[0] && r.picking.lines[0].name) || r.sku;
+      clusters.set(r.sku, { name, sku: r.sku, totalQty: 0, orderCount: 0 });
+    }
+    const c = clusters.get(r.sku);
+    c.totalQty += r.qty;
+    c.orderCount += 1;
+  }
+  const total = Array.from(clusters.values()).sort((a, b) =>
+    (b.orderCount - a.orderCount) || String(a.sku).localeCompare(String(b.sku))
+  );
+  return { total, single, multiCount };
+}
+
+// 三陸固有フックの唯一の注入点。L1 は恒等（no-op）。
+// 公開版は no-op のまま。sanriku L2 でのみ、ここで商品マスタ参照による
+// MID 付与・セット/レシピ展開（records[].picking.lines の書換え）を実装する。
+// ※ .b2Row は B2 CSV 用。enrich では絶対に触らない（B2 の列・値を汚さないため）。
+function enrichPickingItems(records) {
+  return records; // L1: no-op
+}
+
+// 汎用：total＋single 2種のピッキングシート印刷用HTML（A4縦・余白10mm）を生成
+function renderPickingHTML(data) {
+  const esc = s => String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const dateStr = (document.getElementById('s1-shipDate') || {}).value || '';
+  const dsuf = dateStr ? ' — ' + esc(dateStr) : '';
+  const total = data.total || [], single = data.single || [], multiCount = data.multiCount || 0;
+
+  const totalRows = total.map(t => {
+    const skuTag = (t.sku && t.sku !== t.name) ? ` <span class="sku">(${esc(t.sku)})</span>` : '';
+    return `<tr><td class="name">${esc(t.name)}${skuTag}</td><td class="qty">${esc(t.totalQty)}</td><td class="cnt">${esc(t.orderCount)}</td></tr>`;
+  }).join('');
+  const multiRow = multiCount > 0
+    ? `<tr class="multi"><td class="name">（複数商品注文：別ブロック参照）</td><td class="qty">—</td><td class="cnt">${multiCount}</td></tr>`
+    : '';
+
+  const singleBlocks = single.map(o => {
+    const rows = o.lines.map(l =>
+      `<tr><td class="name">${esc(l.name)}</td><td class="qty">${esc(l.quantity)}</td></tr>`
+    ).join('');
+    return `<section class="order">
+      <h2>${esc(o.orderId)}</h2>
+      <table>
+        <thead><tr><th class="name">商品名</th><th class="qty">数量</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>ピッキングリスト${dateStr ? ' ' + esc(dateStr) : ''}</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "Hiragino Kaku Gothic ProN","Hiragino Sans","Meiryo",sans-serif; color: #000; }
+  h1 { font-size: 16pt; margin: 0 0 2mm; }
+  .summary { font-size: 10.5pt; color: #333; margin: 0 0 6mm; }
+  .sheet.single-sheet { page-break-before: always; break-before: page; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #333; padding: 1.5mm 3mm; font-size: 10.5pt; vertical-align: top; }
+  th { background: #f2f2f2; text-align: left; }
+  td.qty, th.qty, td.cnt, th.cnt { text-align: right; white-space: nowrap; }
+  td.qty, th.qty { width: 22mm; font-weight: bold; }
+  td.cnt, th.cnt { width: 18mm; }
+  .total .sku { color: #666; font-size: 9pt; font-weight: normal; }
+  .total tr.multi td { background: #f7f7f7; color: #444; }
+  .order { margin-bottom: 6mm; page-break-inside: avoid; break-inside: avoid; }
+  .order h2 { font-size: 11pt; margin: 0; padding: 1.5mm 3mm; background: #eee;
+              border: 1px solid #333; border-bottom: none; }
+  @media print { .order { page-break-inside: avoid; } .sheet.single-sheet { page-break-before: always; } }
+</style></head><body>
+  <section class="sheet total-sheet">
+    <h1>📦 トータル（拾う用）${dsuf}</h1>
+    <p class="summary">単一商品 ${total.length} 種${multiCount ? ` ／ 複数商品注文 ${multiCount} 件（末尾シート）` : ''}</p>
+    <table class="total">
+      <thead><tr><th class="name">商品名（SKU）</th><th class="qty">合計数量</th><th class="cnt">注文数</th></tr></thead>
+      <tbody>${totalRows}${multiRow}</tbody>
+    </table>
+  </section>
+  <section class="sheet single-sheet">
+    <h1>📋 シングル（詰め・照合用）${dsuf}</h1>
+    <p class="summary">合計 ${single.length} 注文</p>
+    ${singleBlocks}
+  </section>
+</body></html>`;
+}
+
+// 汎用：印刷用HTMLを隠しiframeへ流し込み window.print()。アプリUIは印刷対象にしない。
+function printPickingSheet(data) {
+  const html = renderPickingHTML(data);
+  const old = document.getElementById('picking-print-frame');
+  if (old) old.remove();
+  const iframe = document.createElement('iframe');
+  iframe.id = 'picking-print-frame';
+  iframe.setAttribute('aria-hidden', 'true');
+  Object.assign(iframe.style, { position:'fixed', right:'0', bottom:'0', width:'0', height:'0', border:'0' });
+  document.body.appendChild(iframe);
+  const doc = iframe.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  // 自己完結HTML（外部リソースなし）のため短い遅延で確実に描画完了させてから印刷
+  setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 200);
+}
+
+// 導線：STEP1 変換結果エリアに「ピッキングを印刷」ボタンを常設する
+function renderPickingButton(data) {
+  const wrap = document.createElement('div');
+  wrap.style.marginTop = '10px';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-primary btn-green';
+  btn.style.marginBottom = '0';
+  const orderCount = (data.single || []).length;
+  btn.textContent = `📋 ピッキングを印刷（トータル＋シングル／${orderCount}注文）`;
+  btn.addEventListener('click', () => printPickingSheet(data));
+  wrap.appendChild(btn);
+  s1Results.appendChild(wrap);
+}
+// ==== PICKING FEATURE (portable to public fbm-tool) — END ====
 
 // ============================================================
 // Tab switching
@@ -873,18 +1074,19 @@ s1Convert.addEventListener('click', async () => {
   const folderName = `B2クラウド_${dateStr}`;
   s1Results.innerHTML = '';
 
-  const allRows = []; let totalCount = 0;
+  const allRecords = []; let totalCount = 0;
 
-  stores.forEach(store => {
+  stores.forEach((store, storeIndex) => {
     if (!s1Buffers[store.name]) return;
     const item = document.createElement('div');
     try {
-      const text = decodeBuffer(s1Buffers[store.name]);
-      const rows = convertToB2(text, shipDate, s1Invoice.value, store);
-      if (rows.length === 0) throw new Error('変換できるデータがありません');
-      allRows.push(...rows); totalCount += rows.length;
+      const text   = decodeBuffer(s1Buffers[store.name]);
+      const groups = parseAmazonTsvGroups(text);
+      const recs   = buildOrderRecords(groups, shipDate, s1Invoice.value, store, storeIndex);
+      if (recs.length === 0) throw new Error('変換できるデータがありません');
+      allRecords.push(...recs); totalCount += recs.length;
       item.className = 'result-item success';
-      item.textContent = `✓ ${store.name}：${rows.length}件`;
+      item.textContent = `✓ ${store.name}：${recs.length}件`;
     } catch(e) {
       item.className = 'result-item error';
       item.textContent = `⚠ ${store.name}：${e.message}`;
@@ -892,7 +1094,15 @@ s1Convert.addEventListener('click', async () => {
     s1Results.appendChild(item);
   });
 
-  if (!allRows.length) return;
+  if (!allRecords.length) return;
+
+  // 統一ソート：B2 CSV 行順 と ピッキング順 の両方に同一順序を適用
+  const sorted  = sortOrderRecords(allRecords);
+  const allRows = sorted.map(r => r.b2Row);   // B2は列・値不変、行順のみソート結果に従う
+
+  // PICKING: no-PII のピッキングデータ（total＋single）を生成し印刷ボタンを常設
+  const pickingData = buildPickingItems(enrichPickingItems(sorted));
+  renderPickingButton(pickingData);
 
   const csvText = [toCsvLine(B2_HEADER), ...allRows.map(toCsvLine)].join('\r\n') + '\r\n';
   const filename = `b2cloud_${dateStr}.csv`;
