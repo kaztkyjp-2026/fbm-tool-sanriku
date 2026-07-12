@@ -580,13 +580,14 @@ function parseAmazonTsvGroups(tsvText) {
         recipientName: gc(cols,'recipient-name'),
         phone: gc(cols,'buyer-phone-number'),
         postal: gc(cols,'ship-postal-code'),
-        fullAddress, building, products:[], quantities:[], itemIds:[]
+        fullAddress, building, products:[], quantities:[], itemIds:[], skus:[]
       });
     }
     const g = groups.get(key);
     g.products.push(gc(cols,'product-name'));
     g.quantities.push(parseInt(gc(cols,'quantity-purchased')||'1',10)||1);
     g.itemIds.push(gc(cols,'order-item-id'));
+    g.skus.push(gc(cols,'sku'));   // per-line SKU（複数商品注文の記事欄採番に使用）
   }
   return Array.from(groups.values());
 }
@@ -627,11 +628,13 @@ function buildOrderRecords(groups, shipDate, invoiceType, store, storeIndex) {
     const sku     = (g.sku && g.sku.trim()) ? g.sku.trim() : (g.products[0] || '');
     const lines   = [];
     for (let i = 0; i < g.products.length; i++) {
-      lines.push({ name: g.products[i] || '', quantity: g.quantities[i] || 0 });
+      const lineSku = (g.skus[i] && g.skus[i].trim()) ? g.skus[i].trim() : (g.products[i] || '');
+      lines.push({ name: g.products[i] || '', quantity: g.quantities[i] || 0, sku: lineSku });
     }
     recs.push({
       b2Row: buildB2Row(g, shipDate, invoiceType, store),
       storeIndex, sku, qty, isMulti,
+      firstItemId: g.itemIds[0] || '',   // 単一商品注文の記事欄に付与する order-item-id
       picking: { orderId: g.orderId, lines }
     });
   }
@@ -736,10 +739,44 @@ function convertToShipmentNotify(csvText) {
 // 公開版では enrichPickingItems を no-op のまま保つこと。
 // ============================================================
 
+// 商品群番号の採番マップ（sku → "NNN" 3桁ゼロ埋め）を単一ソースで構築する。
+// 採番順：統一ソート順（sortOrderRecords 済み）で、
+//   Pass1) 単一商品レコードのクラスタ sku を出現順に 001 から採番、
+//   Pass2) 複数商品注文にのみ登場する sku を末尾で継続採番。
+// このマップをピッキングシート（total番号列）と B2 CSV記事欄が共有する（二重採番禁止）。
+function buildSkuNumberMap(sortedRecords) {
+  const map = new Map();
+  let n = 0;
+  const next = () => String(++n).padStart(3, '0');
+  for (const r of sortedRecords) {           // Pass1: 単一商品クラスタ
+    if (r.isMulti) continue;
+    if (!map.has(r.sku)) map.set(r.sku, next());
+  }
+  for (const r of sortedRecords) {           // Pass2: 複数商品注文のみに登場する sku
+    if (!r.isMulti) continue;
+    for (const line of r.picking.lines) {
+      if (!map.has(line.sku)) map.set(line.sku, next());
+    }
+  }
+  return map;
+}
+
+// 1レコード → B2 CSV記事欄文字列（全角括弧・全角×・全角スラッシュ）。
+//   単一商品注文：（NNN×q）order-item-id      例：（001×2）15338035622845
+//   複数商品注文：（NNN×q／MMM×q）           例：（001×1／004×2）（order-item-id省略）
+function buildKijiForRecord(record, skuNumMap) {
+  const num = s => skuNumMap.get(s) || '000';
+  if (!record.isMulti) {
+    return `（${num(record.sku)}×${record.qty}）${record.firstItemId || ''}`;
+  }
+  const parts = record.picking.lines.map(l => `${num(l.sku)}×${l.quantity}`);
+  return `（${parts.join('／')}）`;
+}
+
 // 汎用：ソート済みレコード → ピッキング表示データ（PII非搭載）。
-//   total  : 単一商品クラスタ集計 [{name, sku, totalQty, orderCount}]（注文数降順）＋ 複数商品件数
-//   single : 注文別 [{orderId, lines:[{name, quantity}]}]（レコード順＝統一ソート順）
-function buildPickingItems(records) {
+//   total  : 単一商品クラスタ集計 [{num, name, sku, totalQty, orderCount}]（注文数降順）＋ 複数商品件数
+//   single : 注文別 [{orderId, lines:[{name, quantity}]}]（レコード順＝統一ソート順）※現在は退避中
+function buildPickingItems(records, skuNumMap) {
   const single = records.map(r => ({ orderId: r.picking.orderId, lines: r.picking.lines }));
 
   const clusters = new Map(); // sku → {name, sku, totalQty, orderCount}
@@ -748,7 +785,8 @@ function buildPickingItems(records) {
     if (r.isMulti) { multiCount++; continue; }
     if (!clusters.has(r.sku)) {
       const name = (r.picking.lines[0] && r.picking.lines[0].name) || r.sku;
-      clusters.set(r.sku, { name, sku: r.sku, totalQty: 0, orderCount: 0 });
+      const num  = (skuNumMap && skuNumMap.get(r.sku)) || '';
+      clusters.set(r.sku, { num, name, sku: r.sku, totalQty: 0, orderCount: 0 });
     }
     const c = clusters.get(r.sku);
     c.totalQty += r.qty;
@@ -777,13 +815,17 @@ function renderPickingHTML(data) {
   const total = data.total || [], single = data.single || [], multiCount = data.multiCount || 0;
 
   const totalRows = total.map(t => {
+    const numCell = t.num ? `（${esc(t.num)}）` : '';
     const skuTag = (t.sku && t.sku !== t.name) ? ` <span class="sku">(${esc(t.sku)})</span>` : '';
-    return `<tr><td class="name">${esc(t.name)}${skuTag}</td><td class="qty">${esc(t.totalQty)}</td><td class="cnt">${esc(t.orderCount)}</td></tr>`;
+    return `<tr><td class="num">${numCell}</td><td class="name">${esc(t.name)}${skuTag}</td><td class="qty">${esc(t.totalQty)}</td><td class="cnt">${esc(t.orderCount)}</td></tr>`;
   }).join('');
   const multiRow = multiCount > 0
-    ? `<tr class="multi"><td class="name">（複数商品注文：別ブロック参照）</td><td class="qty">—</td><td class="cnt">${multiCount}</td></tr>`
+    ? `<tr class="multi"><td class="num"></td><td class="name">（複数商品注文：記事欄参照）</td><td class="qty">—</td><td class="cnt">${multiCount}</td></tr>`
     : '';
 
+  /* single帳票（詰め・照合用）はQRコード出荷オペ導入時に復活予定（2026-07-12退避）。
+     復活時は、この singleBlocks 生成ロジックと、body内の single-sheet セクション（同じく退避中）を
+     同時に有効化すること。total帳票は従来どおり出力する。
   const singleBlocks = single.map(o => {
     const rows = o.lines.map(l =>
       `<tr><td class="name">${esc(l.name)}</td><td class="qty">${esc(l.quantity)}</td></tr>`
@@ -796,12 +838,13 @@ function renderPickingHTML(data) {
       </table>
     </section>`;
   }).join('');
+  */
 
   return `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8">
 <title>ピッキングリスト${dateStr ? ' ' + esc(dateStr) : ''}</title>
 <style>
-  @page { size: A4 portrait; margin: 10mm; }
+  @page { size: A4 portrait; margin: 15mm; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body { font-family: "Hiragino Kaku Gothic ProN","Hiragino Sans","Meiryo",sans-serif; color: #000; }
@@ -814,6 +857,7 @@ function renderPickingHTML(data) {
   td.qty, th.qty, td.cnt, th.cnt { text-align: right; white-space: nowrap; }
   td.qty, th.qty { width: 22mm; font-weight: bold; }
   td.cnt, th.cnt { width: 18mm; }
+  td.num, th.num { width: 14mm; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .total .sku { color: #666; font-size: 9pt; font-weight: normal; }
   .total tr.multi td { background: #f7f7f7; color: #444; }
   .order { margin-bottom: 6mm; page-break-inside: avoid; break-inside: avoid; }
@@ -825,15 +869,12 @@ function renderPickingHTML(data) {
     <h1>📦 トータル（拾う用）${dsuf}</h1>
     <p class="summary">単一商品 ${total.length} 種${multiCount ? ` ／ 複数商品注文 ${multiCount} 件（末尾シート）` : ''}</p>
     <table class="total">
-      <thead><tr><th class="name">商品名（SKU）</th><th class="qty">合計数量</th><th class="cnt">注文数</th></tr></thead>
+      <thead><tr><th class="num">番号</th><th class="name">商品名（SKU）</th><th class="qty">合計数量</th><th class="cnt">注文数</th></tr></thead>
       <tbody>${totalRows}${multiRow}</tbody>
     </table>
   </section>
-  <section class="sheet single-sheet">
-    <h1>📋 シングル（詰め・照合用）${dsuf}</h1>
-    <p class="summary">合計 ${single.length} 注文</p>
-    ${singleBlocks}
-  </section>
+  <!-- single帳票（詰め・照合用）はQRコード出荷オペ導入時に復活予定（2026-07-12退避）。
+       renderPickingHTML冒頭の singleBlocks 生成ロジックと本セクションを同時に復活させること。 -->
 </body></html>`;
 }
 
@@ -861,8 +902,8 @@ function renderPickingButton(data) {
   btn.type = 'button';
   btn.className = 'btn-primary btn-green';
   btn.style.marginBottom = '0';
-  const orderCount = (data.single || []).length;
-  btn.textContent = `📋 ピッキングを印刷（トータル＋シングル／${orderCount}注文）`;
+  const kinds = (data.total || []).length;
+  btn.textContent = `📋 トータルピッキングを印刷（${kinds}種）`;
   btn.addEventListener('click', () => printPickingSheet(data));
   wrap.appendChild(btn);
   s1Results.appendChild(wrap);
@@ -951,7 +992,20 @@ function renderSettingsCards() {
   if (stores.length === 0) { addStoreCard(); } else { stores.forEach(s => addStoreCard(s)); }
 }
 
-document.getElementById('add-store-btn').addEventListener('click', () => addStoreCard());
+document.getElementById('add-store-btn').addEventListener('click', () => {
+  // 2店舗目以降は1店舗目の現在の入力値を初期値としてコピー（店舗名含む・ユーザーが編集する前提）。
+  // 既存カードの値は変更しない。1店舗目が無ければ空カードを追加。
+  const firstCard = document.querySelector('.store-card');
+  let seed;
+  if (firstCard) {
+    const g = f => (firstCard.querySelector(`[data-field="${f}"]`) || {}).value || '';
+    seed = {
+      name: g('name'), tel: g('tel'), postal: g('postal'), address: g('address'),
+      building: g('building'), customerCode: g('customerCode'), fareCode: g('fareCode')
+    };
+  }
+  addStoreCard(seed);
+});
 
 document.getElementById('save-settings-btn').addEventListener('click', () => {
   const cards = document.querySelectorAll('.store-card');
@@ -1098,10 +1152,15 @@ s1Convert.addEventListener('click', async () => {
 
   // 統一ソート：B2 CSV 行順 と ピッキング順 の両方に同一順序を適用
   const sorted  = sortOrderRecords(allRecords);
-  const allRows = sorted.map(r => r.b2Row);   // B2は列・値不変、行順のみソート結果に従う
 
-  // PICKING: no-PII のピッキングデータ（total＋single）を生成し印刷ボタンを常設
-  const pickingData = buildPickingItems(enrichPickingItems(sorted));
+  // 商品群番号を単一マップで採番（ピッキングtotal番号列と B2記事欄が共有＝二重採番禁止）
+  const skuNumMap = buildSkuNumberMap(sorted);
+  // B2記事欄（記事列=index32）のみを (NNN×q) 形式へ上書き。他の列・値・行順は一切不変。
+  for (const r of sorted) { r.b2Row[32] = buildKijiForRecord(r, skuNumMap); }
+  const allRows = sorted.map(r => r.b2Row);
+
+  // PICKING: no-PII のピッキングデータ（total）を生成し印刷ボタンを常設
+  const pickingData = buildPickingItems(enrichPickingItems(sorted), skuNumMap);
   renderPickingButton(pickingData);
 
   const csvText = [toCsvLine(B2_HEADER), ...allRows.map(toCsvLine)].join('\r\n') + '\r\n';
