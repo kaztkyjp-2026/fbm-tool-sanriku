@@ -815,9 +815,15 @@ function buildKijiForRecord(record, skuNumMap) {
 
 // 汎用：ソート済みレコード → ピッキング表示データ（PII非搭載）。
 //   total  : 単一商品クラスタ集計 [{num, name, sku, totalQty, orderCount}]（注文数降順）＋ 複数商品件数
-//   single : 注文別 [{orderId, lines:[{name, quantity}]}]（レコード順＝統一ソート順）※現在は退避中
+//   single : 注文別 [{orderId, lines:[{num, name, quantity, sku}]}]（レコード順＝統一ソート順）
+//   ※ single 明細の num は total と同一の skuNumMap 採番（送り状記事欄（NNN×q）との突合用）
 function buildPickingItems(records, skuNumMap) {
-  const single = records.map(r => ({ orderId: r.picking.orderId, lines: r.picking.lines }));
+  const single = records.map(r => ({
+    orderId: r.picking.orderId,
+    lines: r.picking.lines.map(l => ({
+      ...l, num: (skuNumMap && skuNumMap.get(l.sku)) || ''
+    }))
+  }));
 
   const clusters = new Map(); // sku → {name, sku, totalQty, orderCount}
   let multiCount = 0;
@@ -872,13 +878,15 @@ function renderPickingHTML(data) {
   // single帳票（詰め・照合用）。各明細行の行頭に SKU 対応のサムネイル画像を表示する。
   // 画像URLは skuImageMap（sku-images.json＋登録UI）から引く。無ければ「画像なし」プレースホルダ。
   const singleBlocks = single.map(o => {
-    const rows = o.lines.map(l =>
-      `<tr><td class="thumb-cell">${thumbInner(l.sku)}</td><td class="qty">${esc(l.quantity)}</td><td class="name">${esc(l.name)}</td></tr>`
-    ).join('');
+    const rows = o.lines.map(l => {
+      const numCell = l.num ? `（${esc(l.num)}）` : '';
+      const skuTag = (l.sku && l.sku !== l.name) ? ` <span class="sku">(${esc(l.sku)})</span>` : '';
+      return `<tr><td class="thumb-cell">${thumbInner(l.sku)}</td><td class="num">${numCell}</td><td class="qty">${esc(l.quantity)}</td><td class="name">${esc(l.name)}${skuTag}</td></tr>`;
+    }).join('');
     return `<section class="order">
       <h2>${esc(o.orderId)}</h2>
       <table>
-        <thead><tr><th class="thumb-cell">画像</th><th class="qty">数量</th><th class="name">商品名</th></tr></thead>
+        <thead><tr><th class="thumb-cell">画像</th><th class="num">G番号</th><th class="qty">数量</th><th class="name">商品名</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </section>`;
@@ -906,23 +914,32 @@ function renderPickingHTML(data) {
   .thumb { display: inline-block; width: 18mm; height: 18mm; object-fit: contain; }
   .thumb.no-img { display: inline-flex; align-items: center; justify-content: center;
                   font-size: 7.5pt; color: #999; border: 1px dashed #ccc; line-height: 1.15; }
-  .total .sku { color: #666; font-size: 9pt; font-weight: normal; }
+  .sku { color: #666; font-size: 9pt; font-weight: normal; }
+  /* 担当者記入欄（印刷して手書き。totalのみ） */
+  .staff-field { font-size: 11pt; margin: 0 0 5mm; }
+  .staff-line { display: inline-block; width: 70mm; border-bottom: 1px solid #333; vertical-align: bottom; }
+  /* totalのG番号・合計数量は現場視認性のため約3倍に拡大（10.5pt→32pt）。列幅も拡げて崩れ防止。single帳票は不変 */
+  .total td.num, .total td.qty { font-size: 32pt; line-height: 1.05; font-weight: bold; }
+  .total th.num, .total td.num { width: 28mm; }
+  .total th.qty, .total td.qty { width: 30mm; }
   .total tr.multi td { background: #f7f7f7; color: #444; }
+  .total tr.multi td.num, .total tr.multi td.qty { font-size: 10.5pt; font-weight: normal; }
   .order { margin-bottom: 6mm; page-break-inside: avoid; break-inside: avoid; }
   .order h2 { font-size: 11pt; margin: 0; padding: 1.5mm 3mm; background: #eee;
               border: 1px solid #333; border-bottom: none; }
   @media print { .order { page-break-inside: avoid; } .sheet.single-sheet { page-break-before: always; } }
 </style></head><body>
   <section class="sheet total-sheet">
-    <h1>📦 トータル（拾う用）${dsuf}</h1>
+    <h1>📦 ピッキングリスト${dsuf}</h1>
     <p class="summary">単一商品 ${total.length} 種${multiCount ? ` ／ 複数商品注文 ${multiCount} 件（末尾シート）` : ''}</p>
+    <div class="staff-field">担当者：<span class="staff-line"></span></div>
     <table class="total">
-      <thead><tr><th class="thumb-cell">画像</th><th class="num">番号</th><th class="qty">合計数量</th><th class="name">商品名（SKU）</th><th class="cnt">注文数</th></tr></thead>
+      <thead><tr><th class="thumb-cell">画像</th><th class="num">G番号</th><th class="qty">合計数量</th><th class="name">商品名（SKU）</th><th class="cnt">注文数</th></tr></thead>
       <tbody>${totalRows}${multiRow}</tbody>
     </table>
   </section>
   <section class="sheet single-sheet">
-    <h1>📋 シングル（詰め・照合用）${dsuf}</h1>
+    <h1>📋 梱包・発送明細${dsuf}</h1>
     <p class="summary">合計 ${single.length} 注文</p>
     ${singleBlocks}
   </section>
@@ -954,7 +971,7 @@ function renderPickingButton(data) {
   btn.className = 'btn-primary btn-green';
   btn.style.marginBottom = '0';
   const orders = (data.single || []).length;
-  btn.textContent = `📋 ピッキングを印刷（トータル＋シングル／${orders}注文）`;
+  btn.textContent = `📋 ピッキングリスト＋梱包・発送明細を印刷（${orders}注文）`;
   btn.addEventListener('click', () => printPickingSheet(data));
   wrap.appendChild(btn);
   s1Results.appendChild(wrap);
