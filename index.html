@@ -761,16 +761,56 @@ function buildSkuNumberMap(sortedRecords) {
   return map;
 }
 
+// cp932エンコード時のバイト数を返す。全角=2バイト、半角(ASCII)=1バイトとして概算。
+// 厳密なcp932変換ではなく、実用上の概算（サロゲートペア等の特殊文字は考慮しない）。
+// 記事欄は （）×／ ＝2バイト、番号・数量・order-item-id ＝ASCII1バイト のみで構成される。
+function cp932ByteLength(str) {
+  let bytes = 0;
+  for (const ch of str) {
+    const code = ch.codePointAt(0);
+    bytes += (code <= 0x7E) ? 1 : 2; // ASCII範囲は1バイト、それ以外は2バイト概算
+  }
+  return bytes;
+}
+
+const KIJI_MAX_BYTES = 44; // ヤマトB2Cloud記事欄の実制限＝全角22文字 = 44バイト（cp932想定）
+
 // 1レコード → B2 CSV記事欄文字列（全角括弧・全角×・全角スラッシュ）。
+// KIJI_MAX_BYTES(44byte=全角22文字) を超えないよう段階的にフォールバックする。
 //   単一商品注文：（NNN×q）order-item-id      例：（001×2）15338035622845
-//   複数商品注文：（NNN×q／MMM×q）           例：（001×1／004×2）（order-item-id省略）
+//     → 超過時は order-item-id を省略し （NNN×q） のみ
+//   複数商品注文：（NNN×q／MMM×q…）          例：（001×1／004×2）（order-item-id省略）
+//     → 超過時は収まる商品数まで表示し「／他N種」を付与（Nは省略した商品グループ＝種類数）
 function buildKijiForRecord(record, skuNumMap) {
   const num = s => skuNumMap.get(s) || '000';
+
   if (!record.isMulti) {
-    return `（${num(record.sku)}×${record.qty}）${record.firstItemId || ''}`;
+    // 第1候補：（NNN×q）+ order-item-id
+    const withId = `（${num(record.sku)}×${record.qty}）${record.firstItemId || ''}`;
+    if (cp932ByteLength(withId) <= KIJI_MAX_BYTES) return withId;
+    // 第2候補：order-item-id 省略
+    const noId = `（${num(record.sku)}×${record.qty}）`;
+    if (cp932ByteLength(noId) > KIJI_MAX_BYTES) {
+      // 理論上ほぼ起きない。無理に切り詰めず（情報破壊回避）そのまま出力し警告。
+      console.warn('[記事欄] 44byte上限に収まりません（単一商品）:', noId, cp932ByteLength(noId) + 'byte');
+    }
+    return noId;
   }
+
   const parts = record.picking.lines.map(l => `${num(l.sku)}×${l.quantity}`);
-  return `（${parts.join('／')}）`;
+  // 第1候補：全商品グループ
+  const full = `（${parts.join('／')}）`;
+  if (cp932ByteLength(full) <= KIJI_MAX_BYTES) return full;
+
+  // 超過：収まる商品数まで表示し「／他N件」を付与。収まる個数は後ろから減らして動的に決定。
+  for (let k = parts.length - 1; k >= 1; k--) {
+    const cand = `（${parts.slice(0, k).join('／')}／他${parts.length - k}種）`;
+    if (cp932ByteLength(cand) <= KIJI_MAX_BYTES) return cand;
+  }
+  // 1商品＋「他N種」でも超過する异常ケース（理論上まず起きない）。切り詰めず警告して返す。
+  const fallback = `（${parts[0]}／他${parts.length - 1}種）`;
+  console.warn('[記事欄] 44byte上限に収まりません（複数商品）:', fallback, cp932ByteLength(fallback) + 'byte');
+  return fallback;
 }
 
 // 汎用：ソート済みレコード → ピッキング表示データ（PII非搭載）。
