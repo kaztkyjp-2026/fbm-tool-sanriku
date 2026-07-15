@@ -341,31 +341,6 @@
     <button class="btn-add-store" id="add-store-btn">＋ 店舗を追加</button>
     <button class="btn-primary btn-green" id="save-settings-btn">保存してSTEP 1へ</button>
     <div id="settings-result"></div>
-
-    <hr class="divider">
-    <div class="section-label">商品画像URL登録（シングル帳票サムネイル用）</div>
-    <div class="info-box" style="margin-bottom:12px;">
-      シングル帳票のサムネイルに使う <strong>SKU → 画像URL</strong> の対応を登録します。<br>
-      登録内容は<strong>この画面のメモリ上のみ</strong>に保持されます。永続化するには、下のJSONを
-      <strong>コピー</strong>して <code>sku-images.json</code> に貼り付け、commit・pushしてください。
-    </div>
-    <div class="settings-row">
-      <div class="field">
-        <label>SKU（管理番号）</label>
-        <input type="text" id="img-sku-input" list="img-sku-list" placeholder="例：SANRIKU-WAKAME-200">
-        <datalist id="img-sku-list"></datalist>
-      </div>
-      <div class="field full">
-        <label>画像URL</label>
-        <input type="text" id="img-url-input" placeholder="https://example.com/image.jpg">
-      </div>
-    </div>
-    <button class="btn-primary btn-green" id="img-register-btn" type="button" style="margin-top:8px;">この内容を登録</button>
-    <div id="img-register-result" style="font-size:12px;margin-top:6px;"></div>
-    <div class="section-label" style="margin-top:14px;">現在のマッピング（sku-images.json 貼り付け用）</div>
-    <textarea id="img-json-output" readonly rows="8" style="width:100%;font-family:monospace;font-size:12px;box-sizing:border-box;">{}</textarea>
-    <button class="btn-primary" id="img-copy-btn" type="button" style="margin-top:8px;">JSONをコピー</button>
-    <div id="img-copy-result" style="font-size:12px;margin-top:6px;"></div>
   </div>
 
   <!-- ============ STEP1 ============ -->
@@ -888,22 +863,22 @@ function renderPickingHTML(data) {
   const totalRows = total.map(t => {
     const numCell = t.num ? `（${esc(t.num)}）` : '';
     const skuTag = (t.sku && t.sku !== t.name) ? ` <span class="sku">(${esc(t.sku)})</span>` : '';
-    return `<tr><td class="thumb-cell">${thumbInner(t.sku)}</td><td class="num">${numCell}</td><td class="name">${esc(t.name)}${skuTag}</td><td class="qty">${esc(t.totalQty)}</td><td class="cnt">${esc(t.orderCount)}</td></tr>`;
+    return `<tr><td class="thumb-cell">${thumbInner(t.sku)}</td><td class="num">${numCell}</td><td class="qty">${esc(t.totalQty)}</td><td class="name">${esc(t.name)}${skuTag}</td><td class="cnt">${esc(t.orderCount)}</td></tr>`;
   }).join('');
   const multiRow = multiCount > 0
-    ? `<tr class="multi"><td class="thumb-cell"></td><td class="num"></td><td class="name">（複数商品注文：記事欄参照）</td><td class="qty">—</td><td class="cnt">${multiCount}</td></tr>`
+    ? `<tr class="multi"><td class="thumb-cell"></td><td class="num"></td><td class="qty">—</td><td class="name">（複数商品注文：記事欄参照）</td><td class="cnt">${multiCount}</td></tr>`
     : '';
 
   // single帳票（詰め・照合用）。各明細行の行頭に SKU 対応のサムネイル画像を表示する。
   // 画像URLは skuImageMap（sku-images.json＋登録UI）から引く。無ければ「画像なし」プレースホルダ。
   const singleBlocks = single.map(o => {
     const rows = o.lines.map(l =>
-      `<tr><td class="thumb-cell">${thumbInner(l.sku)}</td><td class="name">${esc(l.name)}</td><td class="qty">${esc(l.quantity)}</td></tr>`
+      `<tr><td class="thumb-cell">${thumbInner(l.sku)}</td><td class="qty">${esc(l.quantity)}</td><td class="name">${esc(l.name)}</td></tr>`
     ).join('');
     return `<section class="order">
       <h2>${esc(o.orderId)}</h2>
       <table>
-        <thead><tr><th class="thumb-cell">画像</th><th class="name">商品名</th><th class="qty">数量</th></tr></thead>
+        <thead><tr><th class="thumb-cell">画像</th><th class="qty">数量</th><th class="name">商品名</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </section>`;
@@ -942,7 +917,7 @@ function renderPickingHTML(data) {
     <h1>📦 トータル（拾う用）${dsuf}</h1>
     <p class="summary">単一商品 ${total.length} 種${multiCount ? ` ／ 複数商品注文 ${multiCount} 件（末尾シート）` : ''}</p>
     <table class="total">
-      <thead><tr><th class="thumb-cell">画像</th><th class="num">番号</th><th class="name">商品名（SKU）</th><th class="qty">合計数量</th><th class="cnt">注文数</th></tr></thead>
+      <thead><tr><th class="thumb-cell">画像</th><th class="num">番号</th><th class="qty">合計数量</th><th class="name">商品名（SKU）</th><th class="cnt">注文数</th></tr></thead>
       <tbody>${totalRows}${multiRow}</tbody>
     </table>
   </section>
@@ -1129,12 +1104,12 @@ let s1Buffers = {};
 
 // ============================================================
 // 商品サムネイル：SKU→画像URL マッピング
-// sku-images.json をページロードで読み込み、メモリ上に保持。single帳票のサムネイルに使用。
-// 登録UI（設定タブ）での追加もこのマップに反映。※JSONファイル自体はブラウザからは書けないため、
-// UIは「次にJSONへ手動反映するための下書き」を作るだけ（コピー→手動でjson更新→push運用）。
+// sku-images.json をページロードで読み込み、メモリ上に保持。total/single帳票のサムネイルに使用。
+// 登録UI（S1変換後の画面一覧・各行のURL欄）での編集もこのマップに反映。
+// ※JSONファイル自体はブラウザからは書けないため、UIは「次にJSONへ手動反映するための下書き」を
+//   作るだけ（コピー→手動でjson更新→push運用）。
 // ============================================================
 let skuImageMap = {};              // { sku: url }
-const knownSkus = new Set();       // 読み込んだ注文データから収集（登録UIの候補=datalist）
 
 async function loadSkuImages() {
   try {
@@ -1149,15 +1124,10 @@ async function loadSkuImages() {
   refreshSkuImageUI();
 }
 
-// 登録UI（JSONテキストエリア＋SKU候補datalist）を現在のマップ状態で再描画。
+// JSON下書きテキストエリアを現在のマップ状態で再描画（一覧が未生成のときは no-op）。
 function refreshSkuImageUI() {
   const out = document.getElementById('img-json-output');
   if (out) out.value = JSON.stringify(skuImageMap, null, 2);
-  const dl = document.getElementById('img-sku-list');
-  if (dl) {
-    const skus = new Set([...Object.keys(skuImageMap), ...knownSkus]);
-    dl.innerHTML = Array.from(skus).sort().map(s => `<option value="${esc(s)}">`).join('');
-  }
 }
 
 function renderStep1Sections() {
@@ -1268,16 +1238,11 @@ s1Convert.addEventListener('click', async () => {
   for (const r of sorted) { r.b2Row[32] = buildKijiForRecord(r, skuNumMap); }
   const allRows = sorted.map(r => r.b2Row);
 
-  // 画像登録UIのSKU候補（datalist）を、読み込んだ注文データのSKUで更新
-  sorted.forEach(r => {
-    if (r.sku) knownSkus.add(r.sku);
-    (r.picking.lines || []).forEach(l => { if (l.sku) knownSkus.add(l.sku); });
-  });
-  refreshSkuImageUI();
-
   // PICKING: no-PII のピッキングデータ（total）を生成し印刷ボタンを常設
   const pickingData = buildPickingItems(enrichPickingItems(sorted), skuNumMap);
   renderPickingButton(pickingData);
+  // 画像URL登録用の画面一覧（各行にURL入力欄）を生成（トグルで開閉）
+  renderImageRegisterSection(pickingData);
 
   const csvText = [toCsvLine(B2_HEADER), ...allRows.map(toCsvLine)].join('\r\n') + '\r\n';
   const filename = `b2cloud_${dateStr}.csv`;
@@ -1398,34 +1363,113 @@ s2Convert.addEventListener('click', async () => {
 });
 
 // ============================================================
-// 商品画像URL登録UI（設定タブ）
+// 商品画像URL登録UI（S1変換結果エリアの画面一覧）
+// totalクラスタ一覧を画面テーブルとして表示し、各行に画像URL入力欄を1つ置く。
+// SKUは各行に表示済みのため別途入力は不要。入力欄はblur/行内登録ボタンで skuImageMap に反映。
+// 一覧下部に現在のマップ全体のJSON下書き＋コピーボタン（従来運用：手動でsku-images.jsonへ）。
 // ============================================================
-document.getElementById('img-register-btn').addEventListener('click', () => {
-  const skuEl = document.getElementById('img-sku-input');
-  const urlEl = document.getElementById('img-url-input');
-  const resEl = document.getElementById('img-register-result');
-  const sku = (skuEl.value || '').trim();
-  const url = (urlEl.value || '').trim();
-  if (!sku) { resEl.textContent = '⚠ SKUを入力してください'; resEl.style.color = '#c0392b'; return; }
-  if (!url) { resEl.textContent = '⚠ 画像URLを入力してください'; resEl.style.color = '#c0392b'; return; }
-  skuImageMap[sku] = url;
-  refreshSkuImageUI();
-  resEl.textContent = `✓ 登録しました：${sku}`; resEl.style.color = '#1a7a3a';
-  skuEl.value = ''; urlEl.value = '';
-});
+function renderImageRegisterSection(pickingData) {
+  const old = document.getElementById('img-register-wrap');
+  if (old) old.remove();
 
-document.getElementById('img-copy-btn').addEventListener('click', async () => {
-  const out = document.getElementById('img-json-output');
-  const resEl = document.getElementById('img-copy-result');
-  try {
-    await navigator.clipboard.writeText(out.value);
-    resEl.textContent = '✓ コピーしました。sku-images.json に貼り付けてください';
-  } catch (_) {
-    out.focus(); out.select(); document.execCommand('copy');
-    resEl.textContent = '✓ コピーしました（フォールバック）。sku-images.json に貼り付けてください';
-  }
-  resEl.style.color = '#1a7a3a';
-});
+  const total = pickingData.total || [];
+  const wrap = document.createElement('div');
+  wrap.id = 'img-register-wrap';
+  wrap.style.marginTop = '10px';
+
+  // 開閉トグル（変換フローの邪魔にならないよう初期は閉じておく）
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'btn-primary';
+  toggle.textContent = '🖼 画像URL登録一覧を表示';
+
+  const sec = document.createElement('div');
+  sec.style.display = 'none';
+  sec.style.marginTop = '10px';
+
+  const rowsHtml = total.map(t => {
+    const val = skuImageMap[t.sku] ? esc(skuImageMap[t.sku]) : '';
+    const prev = (skuImageMap[t.sku])
+      ? `<img class="ir-prev" src="${esc(skuImageMap[t.sku])}" alt="">`
+      : `<span class="ir-prev ir-none">なし</span>`;
+    return `<tr data-sku="${esc(t.sku)}">
+      <td class="ir-prev-cell">${prev}</td>
+      <td>${esc(t.name)}</td>
+      <td class="ir-sku">${esc(t.sku)}</td>
+      <td class="ir-num">${esc(t.totalQty)}</td>
+      <td class="ir-num">${esc(t.orderCount)}</td>
+      <td><input type="text" class="ir-url" value="${val}" placeholder="https://example.com/image.jpg"></td>
+    </tr>`;
+  }).join('');
+
+  sec.innerHTML = `
+    <style>
+      #img-register-wrap .ir-table { width:100%; border-collapse:collapse; font-size:13px; }
+      #img-register-wrap .ir-table th, #img-register-wrap .ir-table td {
+        border-bottom:1px solid #e2e2e2; padding:5px 8px; vertical-align:middle; text-align:left; }
+      #img-register-wrap .ir-table th { background:#f4f4f4; }
+      #img-register-wrap .ir-num { text-align:right; white-space:nowrap; }
+      #img-register-wrap .ir-sku { color:#555; }
+      #img-register-wrap .ir-url { width:100%; box-sizing:border-box; font-size:12px; padding:3px 6px; }
+      #img-register-wrap .ir-prev-cell { width:44px; text-align:center; }
+      #img-register-wrap .ir-prev { display:inline-block; width:36px; height:36px; object-fit:contain; vertical-align:middle; }
+      #img-register-wrap .ir-prev.ir-none { display:inline-flex; align-items:center; justify-content:center;
+        font-size:9px; color:#aaa; border:1px dashed #ccc; }
+    </style>
+    <div class="info-box" style="margin-bottom:10px;">
+      各商品行の<strong>画像URL欄</strong>に画像URLを貼り付け、欄外をクリック（フォーカスを外す）すると登録されます。<br>
+      永続化するには下のJSONを<strong>コピー</strong>して <code>sku-images.json</code> に貼り付け、commit・pushしてください。
+    </div>
+    <table class="ir-table">
+      <thead><tr><th></th><th>商品名</th><th>SKU</th><th class="ir-num">合計数量</th><th class="ir-num">注文数</th><th>画像URL</th></tr></thead>
+      <tbody>${rowsHtml || '<tr><td colspan="6" style="color:#888;padding:10px;">単一商品クラスタがありません</td></tr>'}</tbody>
+    </table>
+    <div class="section-label" style="margin-top:14px;">現在のマッピング（sku-images.json 貼り付け用）</div>
+    <textarea id="img-json-output" readonly rows="8" style="width:100%;font-family:monospace;font-size:12px;box-sizing:border-box;"></textarea>
+    <button class="btn-primary" id="img-copy-btn" type="button" style="margin-top:8px;">JSONをコピー</button>
+    <div id="img-copy-result" style="font-size:12px;margin-top:6px;"></div>`;
+
+  wrap.appendChild(toggle);
+  wrap.appendChild(sec);
+  s1Results.appendChild(wrap);
+
+  toggle.addEventListener('click', () => {
+    const shown = sec.style.display !== 'none';
+    sec.style.display = shown ? 'none' : 'block';
+    toggle.textContent = shown ? '🖼 画像URL登録一覧を表示' : '🖼 画像URL登録一覧を隠す';
+  });
+
+  // 各行のURL欄：blur で skuImageMap に反映＋プレビュー更新
+  sec.querySelectorAll('.ir-url').forEach(inp => {
+    inp.addEventListener('blur', () => {
+      const tr = inp.closest('tr');
+      const sku = tr.getAttribute('data-sku');
+      const v = inp.value.trim();
+      if (v) skuImageMap[sku] = v; else delete skuImageMap[sku];
+      refreshSkuImageUI();
+      const cell = tr.querySelector('.ir-prev-cell');
+      cell.innerHTML = v
+        ? `<img class="ir-prev" src="${esc(v)}" alt="">`
+        : `<span class="ir-prev ir-none">なし</span>`;
+    });
+  });
+
+  // コピー（従来のフォールバック付き）
+  sec.querySelector('#img-copy-btn').addEventListener('click', async () => {
+    const out = sec.querySelector('#img-json-output');
+    const resEl = sec.querySelector('#img-copy-result');
+    try {
+      await navigator.clipboard.writeText(out.value);
+      resEl.textContent = '✓ コピーしました。sku-images.json に貼り付けてください';
+    } catch (_) {
+      out.focus(); out.select(); document.execCommand('copy');
+      resEl.textContent = '✓ コピーしました（フォールバック）。sku-images.json に貼り付けてください';
+    }
+    resEl.style.color = '#1a7a3a';
+  });
+
+  refreshSkuImageUI();
+}
 
 // ============================================================
 // Initialize
