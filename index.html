@@ -858,6 +858,7 @@ function renderPickingHTML(data) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const dateStr = (document.getElementById('s1-shipDate') || {}).value || '';
   const dsuf = dateStr ? ' — ' + esc(dateStr) : '';
+  const dateNum = dateStr.replace(/-/g, '');   // YYYY-MM-DD → YYYYMMDD（印刷ファイル名用）
   const total = data.total || [], single = data.single || [], multiCount = data.multiCount || 0;
 
   // SKU→サムネイル（total・single 共通）。画像URLは skuImageMap から引き、無ければ「画像なし」。
@@ -894,7 +895,7 @@ function renderPickingHTML(data) {
 
   return `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8">
-<title>ピッキングリスト${dateStr ? ' ' + esc(dateStr) : ''}</title>
+<title>ピッキングリスト${dateNum ? '_' + dateNum : ''}</title>
 <style>
   @page { size: A4 portrait; margin: 25mm; }
   * { box-sizing: border-box; }
@@ -918,12 +919,11 @@ function renderPickingHTML(data) {
   /* 担当者記入欄（印刷して手書き。totalのみ） */
   .staff-field { font-size: 11pt; margin: 0 0 5mm; }
   .staff-line { display: inline-block; width: 70mm; border-bottom: 1px solid #333; vertical-align: bottom; }
-  /* totalのG番号・合計数量は現場視認性のため約3倍に拡大（10.5pt→32pt）。列幅も拡げて崩れ防止。single帳票は不変 */
-  .total td.num, .total td.qty { font-size: 32pt; line-height: 1.05; font-weight: bold; }
-  .total th.num, .total td.num { width: 28mm; }
-  .total th.qty, .total td.qty { width: 30mm; }
+  /* totalの数字サイズ：G番号は通常(10.5pt)、合計数量のみ視認性のため16ptに拡大。single帳票は不変 */
+  .total td.num { font-size: 10.5pt; }
+  .total td.qty { font-size: 16pt; line-height: 1.1; }
+  .total th.qty, .total td.qty { width: 24mm; }
   .total tr.multi td { background: #f7f7f7; color: #444; }
-  .total tr.multi td.num, .total tr.multi td.qty { font-size: 10.5pt; font-weight: normal; }
   .order { margin-bottom: 6mm; page-break-inside: avoid; break-inside: avoid; }
   .order h2 { font-size: 11pt; margin: 0; padding: 1.5mm 3mm; background: #eee;
               border: 1px solid #333; border-bottom: none; }
@@ -958,8 +958,19 @@ function printPickingSheet(data) {
   document.body.appendChild(iframe);
   const doc = iframe.contentWindow.document;
   doc.open(); doc.write(html); doc.close();
+  // 印刷/PDF保存ダイアログの既定ファイル名を「ピッキングリスト_YYYYMMDD」にする。
+  // 多くのブラウザは印刷対象フレームまたは親ページの document.title を既定名に用いるため、
+  // iframe内<title>（renderPickingHTMLで設定済）に加え、印刷中だけ親titleも同じ値に揃える。
+  const dateNum = ((document.getElementById('s1-shipDate') || {}).value || '').replace(/-/g, '');
+  const printTitle = 'ピッキングリスト' + (dateNum ? '_' + dateNum : '');
+  const prevTitle = document.title;
+  document.title = printTitle;
   // 自己完結HTML（外部リソースなし）のため短い遅延で確実に描画完了させてから印刷
-  setTimeout(() => { iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 200);
+  setTimeout(() => {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    document.title = prevTitle;   // 印刷後は元のタイトルに戻す
+  }, 200);
 }
 
 // 導線：STEP1 変換結果エリアに「ピッキングを印刷」ボタンを常設する
